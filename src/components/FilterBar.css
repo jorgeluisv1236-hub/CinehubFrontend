@@ -1,0 +1,33 @@
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  flex-wrap: wrap;
+}
+.filter-select {
+  background: var(--surface-2);
+  border: 1px solid var(--border-solid);
+  color: var(--fg);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.filter-select:focus { border-color: var(--primary); }
+.filter-clear {
+  background: none;
+  border: 1px solid var(--border-solid);
+  color: var(--fg-muted);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.filter-clear:hover { color: var(--fg); border-color: var(--primary); }

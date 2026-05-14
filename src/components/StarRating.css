@@ -1,0 +1,26 @@
+.star-rating {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+.star-label {
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.star-row {
+  display: flex;
+  gap: 2px;
+}
+.star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  transition: transform 0.1s;
+}
+.star-btn:hover {
+  transform: scale(1.25);
+}

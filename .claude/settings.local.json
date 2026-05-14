@@ -1,0 +1,50 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk '{print $9, \"—\", $5}')",
+      "Bash(npx vite *)",
+      "Bash(claude mcp *)",
+      "Bash(npx skills *)",
+      "Bash(npm install *)",
+      "Bash(npm ls *)",
+      "Bash(Test-Path *)",
+      "Bash(npx vercel *)",
+      "Bash(npm run *)",
+      "PowerShell(New-Item *)",
+      "Bash(npm list *)",
+      "Bash(npx eslint *)",
+      "Bash(Get-Content public/contents.json)",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); genres=set\\(\\); [genres.update\\(g['name'] for g in m.get\\('genres',[]\\) if g.get\\('name'\\)\\) for m in data.get\\('data',[]\\)]; print\\(sorted\\(genres\\)[:40]\\)\")",
+      "Bash(python *)",
+      "PowerShell(Stop-Process *)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(pkill -f \"npm run dev\")",
+      "Bash(pkill -f \"vite\")",
+      "PowerShell(Get-Process *)",
+      "PowerShell(npm run *)",
+      "Bash(Get-Process -Name node -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object Id, ProcessName, CPU, StartTime)",
+      "Bash(node -e \"const d=require\\('./contents_compact.json'\\);const m=d.data.find\\(x=>x.artwork\\);console.log\\(JSON.stringify\\(m.artwork,null,2\\)\\)\")",
+      "Bash(dir /s /b)",
+      "Bash(git remote *)",
+      "Bash(git branch *)",
+      "Bash(git push *)",
+      "Bash(type .env)",
+      "Bash(type .env.local)",
+      "Bash(Get-Content *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"console.log\\(typeof fetch\\)\")",
+      "Bash(node *)",
+      "Bash(copy *)",
+      "WebSearch",
+      "Bash(powershell *)",
+      "WebFetch(domain:streamwish.to)",
+      "WebFetch(domain:vidhidefast.com)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  },
+  "disabledMcpjsonServers": [
+    "supabase"
+  ]
+}

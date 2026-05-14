@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Fetch Movie Genres</title>
+<style>
+  body { font-family: monospace; background: #111; color: #eee; padding: 24px; }
+  #log { white-space: pre; font-size: 13px; height: 400px; overflow-y: auto;
+         background: #000; padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+  button { padding: 10px 24px; background: #e50914; color: #fff; border: none;
+           border-radius: 6px; font-size: 15px; cursor: pointer; margin-right: 8px; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  progress { width: 100%; height: 20px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<h2>CineHub — Fetch Movie Genres from TMDB</h2>
+<progress id="bar" value="0" max="100"></progress>
+<div id="log">Presiona "Iniciar" para comenzar...\n</div>
+<button id="btn" onclick="start()">Iniciar</button>
+<button id="dlBtn" onclick="download()" disabled>Descargar movie_genres.json</button>
+
+<script>
+const BATCH = 10;      // peticiones en paralelo
+const DELAY = 600;     // ms entre lotes (~16 req/s, bien dentro del límite de TMDB)
+
+let result = {};
+const logEl = document.getElementById("log");
+const bar   = document.getElementById("bar");
+
+function log(msg) {
+  logEl.textContent += msg + "\n";
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function tmdbGet(path) {
+  try {
+    const r = await fetch(`/api/tmdb?path=${encodeURIComponent(path)}`);
+    if (r.ok) return await r.json();
+  } catch {}
+  return null;
+}
+
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function start() {
+  document.getElementById("btn").disabled = true;
+  log("Cargando catálogo...");
+
+  const catalog = await fetch("/contents_compact.json").then(r => r.json());
+  const movies = (catalog.data || []).filter(m => m.type !== "Show");
+  log(`Total películas: ${movies.length}`);
+
+  log("Cargando lista de géneros de TMDB...");
+  const genreData = await tmdbGet("/genre/movie/list?language=es-MX");
+  const genreMap = {};
+  (genreData?.genres || []).forEach(g => genreMap[g.id] = g.name);
+  log(`Géneros cargados: ${Object.keys(genreMap).length}`);
+
+  const pending = movies.filter(m => result[String(m.id)] === undefined);
+  log(`Películas por procesar: ${pending.length} (ya hechas: ${movies.length - pending.length})`);
+
+  let done = 0, failed = 0;
+  const t0 = Date.now();
+
+  for (let i = 0; i < pending.length; i += BATCH) {
+    const batch = pending.slice(i, i + BATCH);
+
+    await Promise.all(batch.map(async (movie) => {
+      const mid = String(movie.id);
+      const title = encodeURIComponent(movie.title || "");
+      const data = await tmdbGet(`/search/movie?query=${title}&language=es-MX&page=1`);
+      const hit = data?.results?.[0];
+
+      if (hit?.genre_ids?.length) {
+        result[mid] = hit.genre_ids.map(id => ({ id, name: genreMap[id] || String(id) }));
+        done++;
+      } else {
+        result[mid] = [];
+        failed++;
+      }
+    }));
+
+    const processed = Math.min(i + BATCH, pending.length);
+    const pct = Math.round(processed / pending.length * 100);
+    const elapsed = (Date.now() - t0) / 1000;
+    const eta = Math.round((pending.length - processed) * (elapsed / processed));
+    bar.value = pct;
+
+    if (processed % 100 === 0 || processed === pending.length) {
+      log(`[${pct}%] ${processed}/${pending.length} — encontradas:${done} sin_resultado:${failed} — ETA ~${eta}s`);
+    }
+
+    if (i + BATCH < pending.length) await sleep(DELAY);
+  }
+
+  log(`\n¡Listo! ${done} encontradas, ${failed} sin resultado.`);
+  log("Presiona 'Descargar' para guardar el archivo.");
+  document.getElementById("dlBtn").disabled = false;
+}
+
+function download() {
+  const blob = new Blob([JSON.stringify(result)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "movie_genres.json";
+  a.click();
+}
+</script>
+</body>
+</html>

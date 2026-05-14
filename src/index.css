@@ -1,0 +1,133 @@
+/* ============================================================
+   CineHub — Netflix-style Design System
+   ============================================================ */
+
+:root {
+  --bg:           #141414;
+  --surface:      #181818;
+  --surface-2:    #2f2f2f;
+  --primary:      #e50914;
+  --primary-lite: #ff6b6b;
+  --primary-glow: rgba(229, 9, 20, 0.4);
+  --gold:         #f59e0b;
+  --fg:           #ffffff;
+  --fg-muted:     #a3a3a3;
+  --border:       rgba(255, 255, 255, 0.08);
+  --border-solid: #333333;
+  --radius:       14px;
+  --radius-sm:    9px;
+  --radius-lg:    22px;
+  --radius-pill:  999px;
+}
+
+/* ── Light mode ─────────────────────────────────────────────── */
+body.light {
+  --bg: #f3f3f3;
+  --surface: #ffffff;
+  --surface-2: #e5e5e5;
+  --fg: #141414;
+  --fg-muted: #757575;
+  --border: rgba(0, 0, 0, 0.1);
+  --border-solid: #d8d8d8;
+  --primary-glow: rgba(229, 9, 20, 0.15);
+}
+body.light .navbar { background: rgba(243,243,243,0.94); }
+body.light .navbar--scrolled { background: rgba(243,243,243,0.98); }
+body.light .hero-gradient {
+  background:
+    linear-gradient(to right, rgba(243,243,243,0.92) 0%, transparent 60%),
+    linear-gradient(to top, #f3f3f3 0%, transparent 55%);
+}
+body.light .modal-overlay,
+body.light .s-modal-overlay { background: rgba(0,0,0,0.7); }
+
+/* ── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img { display: block; max-width: 100%; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+a { color: inherit; text-decoration: none; }
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.container { max-width: 1400px; margin: 0 auto; padding: 0 4%; }
+.app-container { min-height: 100vh; }
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #444; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #666; }
+
+/* ── Animations ─────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes shimmer {
+  0%   { background-position: -1000px 0; }
+  100% { background-position:  1000px 0; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes cardFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-fade-in  { animation: fadeIn  0.4s ease both; }
+.animate-scale-in { animation: scaleIn 0.3s ease both; }
+
+/* ── Skeleton ───────────────────────────────────────────────── */
+.skeleton-hero {
+  width: 100%; height: 85vh; min-height: 500px;
+}
+.skeleton-hero, .skeleton-card, .skeleton-section-title {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+  background-size: 1000px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+.skeleton-section-title { height: 20px; width: 180px; border-radius: 2px; margin-bottom: 1rem; }
+.skeleton-grid { display: flex; gap: 4px; overflow: hidden; padding: 0 4%; }
+.skeleton-card { flex: 0 0 175px; aspect-ratio: 2/3; border-radius: 4px; }
+
+/* ── Search empty ───────────────────────────────────────────── */
+.search-empty {
+  max-width: 1400px; margin: 0 auto;
+  padding: 40px 4% 80px;
+  color: var(--fg-muted); font-size: 0.95rem; line-height: 1.7;
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 26px;
+  background: var(--primary); color: #fff;
+  font-weight: 700; font-size: 0.9rem;
+  border-radius: var(--radius-pill); border: none; cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+}
+.btn-primary:hover { opacity: 0.85; transform: translateY(-1px); }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 26px;
+  background: rgba(109,109,110,0.7); color: #fff;
+  font-weight: 600; font-size: 0.9rem;
+  border-radius: var(--radius-pill); border: none; cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-ghost:hover { background: rgba(109,109,110,0.5); }
