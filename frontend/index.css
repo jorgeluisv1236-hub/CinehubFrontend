@@ -1,0 +1,237 @@
+/* ============================================================
+   CineHub — Dark Premium Cinema Design System
+   ============================================================ */
+
+:root {
+  --bg:           #0a0a0f;
+  --surface:      #12121c;
+  --surface-2:    #1a1a28;
+  --primary:      #7c3aed;
+  --primary-lite: #a78bfa;
+  --primary-glow: rgba(124, 58, 237, 0.35);
+  --gold:         #f59e0b;
+  --fg:           #f1f5f9;
+  --fg-muted:     #64748b;
+  --border:       rgba(255, 255, 255, 0.07);
+  --border-solid: #1e1e2e;
+  --radius:       10px;
+  --radius-sm:    6px;
+}
+
+/* ── Light mode ─────────────────────────────────────────────── */
+body.light {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-solid: #e2e8f0;
+  --primary-glow: rgba(124, 58, 237, 0.15);
+}
+body.light .navbar {
+  background: rgba(248, 250, 252, 0.92);
+  border-bottom-color: #e2e8f0;
+}
+body.light .hero-gradient {
+  background: linear-gradient(to top, #f8fafc 0%, rgba(248, 250, 252, 0.6) 55%, transparent 100%);
+}
+body.light .modal-overlay,
+body.light .s-modal-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+/* ── Reset ─────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 4%;
+}
+
+.app-container {
+  min-height: 100vh;
+}
+
+/* ── Custom scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 99px;
+  opacity: 0.6;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-lite);
+}
+
+/* ── Animations ─────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes cardFadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease both;
+}
+
+/* ── Skeleton loaders ───────────────────────────────────────── */
+.skeleton-hero {
+  width: 100%;
+  height: 72vh;
+  min-height: 520px;
+  margin-top: 68px;
+}
+
+.skeleton-hero, .skeleton-card, .skeleton-section-title {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+  background-size: 1000px 100%;
+  animation: shimmer 1.8s infinite linear;
+}
+
+.skeleton-section-title {
+  height: 22px;
+  width: 200px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 1.2rem;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 18px;
+  margin-top: 0.5rem;
+}
+
+.skeleton-card {
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius);
+}
+
+/* ── Search empty state ─────────────────────────────────────── */
+.search-empty {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 40px 4% 80px;
+  color: var(--fg-muted);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+}
+.btn-primary:hover {
+  background: #6d28d9;
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: transparent;
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--primary);
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+}
+.btn-ghost:hover {
+  background: rgba(124, 58, 237, 0.12);
+  transform: translateY(-1px);
+}

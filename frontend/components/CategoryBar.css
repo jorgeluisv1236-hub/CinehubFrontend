@@ -1,0 +1,50 @@
+/* ── CategoryBar ─────────────────────────────────────────────── */
+.category-bar {
+  position: sticky;
+  top: 68px;
+  z-index: 90;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.category-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4%;
+  max-width: 1400px;
+  margin: 0 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.category-bar-inner::-webkit-scrollbar {
+  display: none;
+}
+
+.category-pill {
+  flex-shrink: 0;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border-solid);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.category-pill:hover {
+  border-color: var(--primary-lite);
+  color: var(--fg);
+}
+
+.category-pill.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
