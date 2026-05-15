@@ -18,19 +18,22 @@ export function useTmdbData(item) {
 
     const run = async () => {
       try {
-        // Search TMDB for this item
-        const result = await searchTmdb(item.title, year, type);
-        if (!result) { setLoading(false); return; }
+        // Use pre-fetched tmdbId if available, otherwise search TMDB
+        let tmdbId = item.tmdbId ? Number(item.tmdbId) : null;
+        if (!tmdbId) {
+          const result = await searchTmdb(item.title, year, type);
+          if (!result) { setLoading(false); return; }
+          tmdbId = result.id;
+        }
 
-        const tmdbId = result.id;
-
-        // Fetch all in parallel
-        const [details, cast, trailerKey, similar] = await Promise.all([
+        // Skip trailer fetch if already available in item data
+        const [details, cast, trailerKeyFetched, similar] = await Promise.all([
           getTmdbDetails(tmdbId, type),
           getTmdbCast(tmdbId, type),
-          getTmdbTrailer(tmdbId, type),
+          item.trailer ? Promise.resolve(null) : getTmdbTrailer(tmdbId, type),
           getTmdbSimilar(tmdbId, type),
         ]);
+        const trailerKey = item.trailer || trailerKeyFetched;
 
         // Extract certification
         let certification = null;

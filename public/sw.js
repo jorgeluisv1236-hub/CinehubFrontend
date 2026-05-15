@@ -4,6 +4,7 @@ const JSON_URLS = [
   '/series_genres.json',
   '/movie_genres.json',
   '/playback_sources.json',
+  '/movie_detail.json',
   '/series_detail.json',
   '/series_episodes.json',
   '/series_sources.json',

@@ -110,19 +110,28 @@ function App() {
     Promise.all([
       fetch('/contents_compact.json').then((r) => r.json()),
       fetch('/playback_sources.json').then((r) => r.json()),
-      fetch('/content_detail.json').then((r) => r.json()),
       fetch('/series_genres.json').then((r) => r.json()).catch(() => ({})),
       fetch('/movie_genres.json').then((r) => r.json()).catch(() => ({})),
-    ]).then(([contentsData, sourcesData, detailData, seriesGenresData, movieGenresData]) => {
+      fetch('/movie_detail.json').then((r) => r.json()).catch(() => ({})),
+    ]).then(([contentsData, sourcesData, seriesGenresData, movieGenresData, movieDetailData]) => {
       const raw = contentsData.data || [];
       const list = raw.map((m) => {
-        let item = m.id === 8557 ? { ...m, ...detailData } : m;
+        let item = m;
         if (item.type === 'Show') {
           const genres = seriesGenresData[String(item.id)];
           if (genres) item = { ...item, genres };
         } else {
           const genres = movieGenresData[String(item.id)];
           if (genres) item = { ...item, genres };
+          const md = movieDetailData[String(item.id)];
+          if (md) item = {
+            ...item,
+            people:      md.people      ?? item.people,
+            trailer:     md.trailer     ?? item.trailer,
+            tmdbId:      md.tmdbId      ?? item.tmdbId,
+            certification: md.certification ?? item.certification,
+            overview:    md.overview    || item.overview,
+          };
         }
         return item;
       });
