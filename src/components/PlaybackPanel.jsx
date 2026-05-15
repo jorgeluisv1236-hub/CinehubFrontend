@@ -5,375 +5,300 @@ import './PlaybackPanel.css';
 
 const IFRAME_ALLOW =
   'accelerometer *; autoplay *; clipboard-write *; encrypted-media *; gyroscope *; picture-in-picture *; web-share *; fullscreen *';
-
-// No sandbox — embed sites detect it and refuse to play.
-// Protection comes from parent-page JS traps + service worker instead.
 const IFRAME_SANDBOX = undefined;
+const TIMEOUT_MS = 18000;
 
-const TIMEOUT_MS = 14000;
+const AD_KW = [
+  'doubleclick','googlesyndication','googleadservices','google-analytics',
+  'adnxs','popads','popcash','trafficjunky','juicyads','exoclick',
+  'plugrush','adspyglass','hilltopads','propellerads','adskeeper',
+  'clickadu','realsrv','tsyndicate','onclick','adsterra',
+  'mgid','taboola','outbrain','moatads','rubiconproject',
+  'pubmatic','openx','appnexus','criteo','hlsads','adservme',
+  'smartadserver','lijit','buzzcity','adsafeprotected',
+  'adservice','affiliate','tracking','pixel','popunder',
+  'popup','banner','advert','sponsor','promo',
+];
 
-function isProbablyValidEmbedUrl(url) {
-  if (!url || typeof url !== 'string') return false;
-  const trimmed = url.trim();
-  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return false;
-  if (trimmed.includes('reemplaza_con_tu_file_id')) return false;
+// ─── Lightbridge Engine ─────────────────────────────────────────
+// Operates on the iframe from OUTSIDE via contentDocument/contentWindow
+// (same-origin proxy). Embed code runs 100% unmodified.
+function isAd(s) {
+  if (!s || typeof s !== 'string') return false;
+  const l = s.toLowerCase();
+  return AD_KW.some(k => l.includes(k));
+}
+function lbClean(doc) {
+  if (!doc) return;
+  doc.querySelectorAll('script[src]').forEach(el => { if (isAd(el.src)) el.remove(); });
+  doc.querySelectorAll('iframe[src]').forEach(el => { if (isAd(el.src)) el.remove(); });
+  doc.querySelectorAll('[class*="ad"],[id*="ad"],[class*="banner"],[id*="banner"],[class*="popup"],[id*="popup"]').forEach(el => el.remove());
+}
+function lbWatch(doc) {
+  if (!doc) return null;
+  const obs = new MutationObserver(muts => {
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        const el = n;
+        if (isAd(el.src||'')||isAd(el.className||'')||isAd(el.id||'')) { el.remove(); continue; }
+        if ((el.tagName==='SCRIPT'||el.tagName==='IFRAME') && isAd(el.src||el.getAttribute('src')||'')) el.remove();
+      }
+    }
+  });
+  obs.observe(doc, { childList: true, subtree: true });
+  return obs;
+}
+function lbOverride(win) {
+  if (!win) return;
   try {
-    const u = new URL(trimmed);
-    return Boolean(u.hostname);
-  } catch {
-    return false;
-  }
+    win.open = function(){ return null; };
+    const f = win.fetch;
+    win.fetch = function(i,o) {
+      const u = typeof i==='string'?i:(i&&i.url?i.url:'');
+      if (u&&isAd(u)) return Promise.resolve(new Response('',{status:200}));
+      return f.call(win,i,o);
+    };
+    const xo = win.XMLHttpRequest.prototype.open;
+    win.XMLHttpRequest.prototype.open = function(m,u) {
+      if (u&&isAd(typeof u==='string'?u:String(u))) return;
+      return xo.apply(this,arguments);
+    };
+  } catch(e) {}
 }
 
-async function extractVideoUrl(embedUrl, signal) {
-  const res = await fetch(`/api/extract?url=${encodeURIComponent(embedUrl)}`, { signal });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.url ? data : null;
+function isValidUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  const t = url.trim();
+  if (!t.startsWith('http://')&&!t.startsWith('https://')) return false;
+  if (t.includes('reemplaza_con_tu_file_id')) return false;
+  try { return !!new URL(t).hostname; } catch { return false; }
+}
+function proxyUrl(u) { return u ? '/api/proxy?url='+encodeURIComponent(u.trim()) : ''; }
+async function extUrl(embedUrl, signal) {
+  const r = await fetch('/api/extract?url='+encodeURIComponent(embedUrl), { signal });
+  if (!r.ok) return null;
+  const d = await r.json();
+  return d.url ? d : null;
 }
 
 const PlaybackPanel = ({ title, sources = [] }) => {
   const usable = useMemo(() => {
     const seen = new Set();
-    return (sources || [])
-      .map((s, i) => ({ ...s, _index: i, _valid: isProbablyValidEmbedUrl(s.embedUrl) }))
-      .filter((s) => {
-        if (!s.name || !s.embedUrl) return false;
-        const key = s.embedUrl.trim();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+    return (sources||[]).map((s,i)=>({...s,_index:i,_valid:isValidUrl(s.embedUrl)})).filter(s=>{
+      if (!s.name||!s.embedUrl) return false;
+      const k = s.embedUrl.trim();
+      if (seen.has(k)) return false;
+      seen.add(k); return true;
+    });
   }, [sources]);
-
-  const firstValidIdx = useMemo(() => usable.findIndex((s) => s._valid), [usable]);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [iframeLoading, setIframeLoading] = useState(true);
+  const fvi = useMemo(()=>usable.findIndex(s=>s._valid),[usable]);
+  const [ai, setAi] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [timedOut, setTimedOut] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fs, setFs] = useState(false);
   const [extracting, setExtracting] = useState(false);
-  const [nativeVideo, setNativeVideo] = useState(null);
-  const [extractFailed, setExtractFailed] = useState(false);
+  const [nv, setNv] = useState(null);
+  const [ef, setEf] = useState(false);
+  const fwRef = useRef(null);
+  const ifRef = useRef(null);
+  const vRef = useRef(null);
+  const toRef = useRef(null);
+  const obsRef = useRef(null);
+  const lbRef = useRef(false);
 
-  const frameWrapRef = useRef(null);
-  const videoRef = useRef(null);
-  const timeoutRef = useRef(null);
+  useEffect(()=>{
+    setAi(fvi>=0?fvi:0); setLoading(true); setTimedOut(false);
+    setNv(null); setExtracting(false); setEf(false);
+    lbRef.current=false; if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}
+  },[fvi,usable]);
+  useEffect(()=>{
+    clearTimeout(toRef.current);
+    if(loading&&!nv) toRef.current=setTimeout(()=>{setLoading(false);setTimedOut(true);},TIMEOUT_MS);
+    return ()=>clearTimeout(toRef.current);
+  },[loading,ai,nv]);
+  useEffect(()=>{
+    const o=()=>setFs(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange',o);
+    return ()=>document.removeEventListener('fullscreenchange',o);
+  },[]);
 
-  useEffect(() => {
-    setActiveIndex(firstValidIdx >= 0 ? firstValidIdx : 0);
-    setIframeLoading(true);
-    setTimedOut(false);
-    setNativeVideo(null);
-    setExtracting(false);
-    setExtractFailed(false);
-  }, [firstValidIdx, usable]);
+  // ── Lightbridge: post-load external ad blocking ──
+  useEffect(()=>{
+    if(nv) return;
+    const ifr = ifRef.current;
+    if(!ifr||lbRef.current) return;
+    const poll = setInterval(()=>{
+      try {
+        const d = ifr.contentDocument, w = ifr.contentWindow;
+        if(d&&w&&d.body){
+          lbClean(d);
+          const o = lbWatch(d);
+          if(o) obsRef.current=o;
+          lbOverride(w);
+          lbRef.current=true;
+          clearInterval(poll);
+        }
+      } catch(e){ clearInterval(poll); }
+    },200);
+    return ()=>{ clearInterval(poll); if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;} lbRef.current=false; };
+  },[nv,ai]);
 
-  useEffect(() => {
-    clearTimeout(timeoutRef.current);
-    if (iframeLoading && !nativeVideo) {
-      timeoutRef.current = setTimeout(() => {
-        setIframeLoading(false);
-        setTimedOut(true);
-      }, TIMEOUT_MS);
-    }
-    return () => clearTimeout(timeoutRef.current);
-  }, [iframeLoading, activeIndex, nativeVideo]);
-
-  useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', onChange);
-    return () => document.removeEventListener('fullscreenchange', onChange);
-  }, []);
-
-  // ─── STEALTH 4-LAYER PROTECTION ───
-  // Runs only in iframe mode. Does NOT modify the embed content.
-  // Layer 1: Kill popups     Layer 2: Focus thief
-  // Layer 3: First-click     Layer 4: Frame-busting defense
-  useEffect(() => {
-    if (nativeVideo) return;
-
-    const origOpen = window.open;
-    window.open = () => null;
-
-    let focusTimer;
-    const onBlur = () => { focusTimer = setTimeout(() => window.focus(), 80); };
-    const onFocus = () => clearTimeout(focusTimer);
-    window.addEventListener('blur', onBlur);
-    window.addEventListener('focus', onFocus);
-
-    let first = true;
-    const onClickCapture = (e) => {
-      if (first) {
-        first = false;
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-      const a = e.target.closest('a');
-      if (a && (a.target === '_blank' || a.target === '_top')) {
-        e.preventDefault();
-      }
+  // ── Parent-side protection: popups, focus, clicks, frame-busting ──
+  useEffect(()=>{
+    if(nv) return;
+    const oo = window.open;
+    window.open = ()=>null;
+    let ft;
+    const b = ()=>{ ft=setTimeout(()=>window.focus(),80); };
+    const f = ()=>clearTimeout(ft);
+    window.addEventListener('blur',b); window.addEventListener('focus',f);
+    let first=true;
+    const cc = (e)=>{
+      if(first){first=false;e.preventDefault();e.stopPropagation();return;}
+      const a=e.target.closest('a');
+      if(a&&(a.target==='_blank'||a.target==='_top')) e.preventDefault();
     };
-    document.addEventListener('click', onClickCapture, true);
-
-    // Layer 4: Frame-busting — detect if an iframe redirects this page
-    const legitOrigin = window.location.origin + '/';
-    let userNav = false;
-    const markNav = () => { userNav = true; setTimeout(() => userNav = false, 3000); };
-    document.addEventListener('click', markNav);
-    document.addEventListener('submit', markNav);
-
-    const bustGuard = setInterval(() => {
-      const href = window.location.href;
-      if (!href.startsWith(legitOrigin) && !href.startsWith('blob:') && !href.startsWith('about:') && !userNav) {
-        window.location.replace(legitOrigin);
-      }
-    }, 300);
-
-    return () => {
-      window.open = origOpen;
-      window.removeEventListener('blur', onBlur);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('click', onClickCapture, true);
-      clearTimeout(focusTimer);
-      document.removeEventListener('click', markNav);
-      document.removeEventListener('submit', markNav);
-      clearInterval(bustGuard);
+    document.addEventListener('click',cc,true);
+    const lo = window.location.origin+'/';
+    let un = false;
+    const mn = ()=>{un=true;setTimeout(()=>un=false,3000);};
+    document.addEventListener('click',mn); document.addEventListener('submit',mn);
+    const bg = setInterval(()=>{
+      const h = window.location.href;
+      if(!h.startsWith(lo)&&!h.startsWith('blob:')&&!h.startsWith('about:')&&!un) window.location.replace(lo);
+    },300);
+    return ()=>{
+      window.open=oo; window.removeEventListener('blur',b); window.removeEventListener('focus',f);
+      document.removeEventListener('click',cc,true); clearTimeout(ft);
+      document.removeEventListener('click',mn); document.removeEventListener('submit',mn);
+      clearInterval(bg);
     };
-  }, [nativeVideo]);
+  },[nv]);
 
-  useEffect(() => {
-    if (!nativeVideo || !videoRef.current) return;
-    const video = videoRef.current;
-
-    if (nativeVideo.type === 'hls' && Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true });
-      hls.loadSource(nativeVideo.url);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
-      return () => hls.destroy();
-    } else if (nativeVideo.type === 'mp4' || video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = nativeVideo.url;
-      video.play().catch(() => {});
+  // ── HLS.js ──
+  useEffect(()=>{
+    if(!nv||!vRef.current) return;
+    const v = vRef.current;
+    if(nv.type==='hls'&&Hls.isSupported()){
+      const h = new Hls({enableWorker:true});
+      h.loadSource(nv.url); h.attachMedia(v);
+      h.on(Hls.Events.MANIFEST_PARSED,()=>v.play().catch(()=>{}));
+      return ()=>h.destroy();
+    } else if(nv.type==='mp4'||v.canPlayType('application/vnd.apple.mpegurl')){
+      v.src=nv.url; v.play().catch(()=>{});
     }
-  }, [nativeVideo]);
+  },[nv]);
 
-  const active = usable[activeIndex] ?? null;
+  const active = usable[ai] ?? null;
   const activeUrl = active?._valid ? active.embedUrl.trim() : '';
-  const hasNext = activeIndex < usable.length - 1;
+  const proxied = useMemo(()=>proxyUrl(activeUrl),[activeUrl]);
+  const hasNext = ai < usable.length - 1;
 
-  const onSelect = useCallback((idx) => {
-    setActiveIndex(idx);
-    setIframeLoading(true);
-    setTimedOut(false);
-    setNativeVideo(null);
-    setExtracting(false);
-    setExtractFailed(false);
-  }, []);
+  const onSelect = useCallback((idx)=>{
+    setAi(idx); setLoading(true); setTimedOut(false);
+    setNv(null); setExtracting(false); setEf(false);
+    lbRef.current=false; if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}
+  },[]);
 
-  const onIframeLoad = useCallback(() => {
-    clearTimeout(timeoutRef.current);
-    setIframeLoading(false);
-    setTimedOut(false);
-  }, []);
+  const onLoad = useCallback(()=>{
+    clearTimeout(toRef.current); setLoading(false); setTimedOut(false);
+  },[]);
 
-  const onNextServer = useCallback(() => {
-    const nextValid = usable.findIndex((s, i) => i > activeIndex && s._valid);
-    if (nextValid !== -1) onSelect(nextValid);
-    else if (hasNext) onSelect(activeIndex + 1);
-  }, [activeIndex, usable, hasNext, onSelect]);
+  const onNext = useCallback(()=>{
+    const n = usable.findIndex((s,i)=>i>ai&&s._valid);
+    if(n!==-1) onSelect(n);
+    else if(hasNext) onSelect(ai+1);
+  },[ai,usable,hasNext,onSelect]);
 
-  const onFullscreen = useCallback(() => {
-    const el = frameWrapRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      el.requestFullscreen?.();
-    }
-  }, []);
+  const onFs = useCallback(()=>{
+    const el = fwRef.current;
+    if(!el) return;
+    if(document.fullscreenElement) document.exitFullscreen();
+    else el.requestFullscreen?.();
+  },[]);
 
-  const onExtract = useCallback(async () => {
-    if (!activeUrl || extracting) return;
-    setExtracting(true);
-    setExtractFailed(false);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 25000);
+  const onExtract = useCallback(async ()=>{
+    if(!activeUrl||extracting) return;
+    setExtracting(true); setEf(false);
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(),25000);
     try {
-      const result = await extractVideoUrl(activeUrl, controller.signal);
-      if (result) {
-        setNativeVideo(result);
-        setIframeLoading(false);
-      } else {
-        setExtractFailed(true);
-      }
-    } catch {
-      setExtractFailed(true);
-    } finally {
-      clearTimeout(timer);
-      setExtracting(false);
-    }
-  }, [activeUrl, extracting]);
+      const r = await extUrl(activeUrl,ctrl.signal);
+      if(r){ setNv(r); setLoading(false); } else setEf(true);
+    } catch { setEf(true); }
+    finally { clearTimeout(t); setExtracting(false); }
+  },[activeUrl,extracting]);
 
-  useEffect(() => {
-    if (!activeUrl || nativeVideo || extracting || extractFailed) return;
-    const timer = setTimeout(() => {
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 8000);
+  useEffect(()=>{
+    if(!activeUrl||nv||extracting||ef) return;
+    const t = setTimeout(()=>{
+      const ctrl = new AbortController();
+      const t2 = setTimeout(()=>ctrl.abort(),8000);
       setExtracting(true);
-      extractVideoUrl(activeUrl, controller.signal)
-        .then((result) => {
-          if (result && !controller.signal.aborted) {
-            setNativeVideo(result);
-            setIframeLoading(false);
-          }
-        })
-        .catch(() => {})
-        .finally(() => {
-          clearTimeout(t);
-          setExtracting(false);
-        });
-    }, 2000);
-    return () => clearTimeout(timer);
+      extUrl(activeUrl,ctrl.signal).then(r=>{if(r&&!ctrl.signal.aborted){setNv(r);setLoading(false);}}).catch(()=>{}).finally(()=>{clearTimeout(t2);setExtracting(false);});
+    },2000);
+    return ()=>clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeUrl]);
+  },[activeUrl]);
 
-  if (!usable.length) {
-    return (
-      <div className="playback-panel playback-panel--empty">
-        <AlertCircle size={40} strokeWidth={1.5} aria-hidden />
-        <p className="playback-panel__empty-title">Sin fuentes de reproduccion</p>
-      </div>
-    );
+  if(!usable.length){
+    return (<div className="playback-panel playback-panel--empty"><AlertCircle size={40} strokeWidth={1.5} aria-hidden /><p className="playback-panel__empty-title">Sin fuentes de reproduccion</p></div>);
   }
 
-  return (
-    <div className="playback-panel">
-      <div className="playback-panel__toolbar">
-        <span className="playback-panel__toolbar-label">Servidor:</span>
-        <div className="playback-panel__sources" role="tablist" aria-label="Servidor de reproduccion">
-          {usable.map((s, idx) => (
-            <button
-              key={`${s.key ?? s.name}-${idx}`}
-              type="button"
-              role="tab"
-              aria-selected={idx === activeIndex}
-              className={`playback-source-chip ${idx === activeIndex ? 'is-active' : ''} ${!s._valid ? 'is-placeholder' : ''}`}
-              onClick={() => onSelect(idx)}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
-        <span className="playback-panel__lang-hint">Si el audio no es en espanol, cambia de servidor</span>
-        <div className="playback-panel__toolbar-actions">
-          {activeUrl && !nativeVideo && (
-            <button
-              type="button"
-              className={`playback-panel__action-btn ${extracting ? 'is-loading' : ''}`}
-              onClick={onExtract}
-              disabled={extracting}
-              title={extracting ? 'Extrayendo video...' : 'Reproducir sin anuncios'}
-            >
-              {extracting
-                ? <Loader2 size={15} className="playback-panel__spinner" />
-                : <Tv2 size={15} />}
-            </button>
-          )}
-          {nativeVideo && (
-            <button
-              type="button"
-              className="playback-panel__action-btn is-active-mode"
-              onClick={() => { setNativeVideo(null); setIframeLoading(true); setExtractFailed(false); }}
-              title="Volver al reproductor normal"
-            >
-              <Tv2 size={15} />
-            </button>
-          )}
-          {(hasNext || usable.some((s, i) => i > activeIndex && s._valid)) && (
-            <button
-              type="button"
-              className="playback-panel__action-btn"
-              onClick={onNextServer}
-              title="Siguiente servidor"
-            >
-              <SkipForward size={15} />
-            </button>
-          )}
-          <button
-            type="button"
-            className="playback-panel__action-btn"
-            onClick={onFullscreen}
-            title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
-          >
-            <Maximize2 size={15} />
-          </button>
-        </div>
+  return (<div className="playback-panel">
+    <div className="playback-panel__toolbar">
+      <span className="playback-panel__toolbar-label">Servidor:</span>
+      <div className="playback-panel__sources" role="tablist" aria-label="Servidor de reproduccion">
+        {usable.map((s,idx)=>(
+          <button key={`${s.key??s.name}-${idx}`} type="button" role="tab"
+            aria-selected={idx===ai}
+            className={`playback-source-chip ${idx===ai?'is-active':''} ${!s._valid?'is-placeholder':''}`}
+            onClick={()=>onSelect(idx)}>{s.name}</button>
+        ))}
       </div>
-
-      <div className="playback-panel__frame-wrap" ref={frameWrapRef}>
-        {nativeVideo && (
-          <video
-            ref={videoRef}
-            className="playback-panel__native-video"
-            controls
-            autoPlay
-            playsInline
-          />
-        )}
-
-        {extractFailed && !nativeVideo && (
-          <div className="playback-panel__extract-hint">
-            <AlertCircle size={14} />
-            <span>No se pudo extraer - usando reproductor normal</span>
-          </div>
-        )}
-
-        {!nativeVideo && (
-          <>
-            {iframeLoading && activeUrl && (
-              <div className="playback-panel__loading" aria-live="polite">
-                <Loader2 className="playback-panel__spinner" size={36} aria-hidden />
-                <span>Cargando reproductor...</span>
-              </div>
-            )}
-
-            {timedOut && (
-              <div className="playback-panel__timeout">
-                <AlertCircle size={32} strokeWidth={1.5} />
-                <p>Este servidor no respondio.</p>
-                {hasNext ? (
-                  <button type="button" className="playback-panel__retry-btn" onClick={onNextServer}>
-                    <SkipForward size={14} /> Probar siguiente servidor
-                  </button>
-                ) : (
-                  <p className="playback-panel__timeout-hint">No hay mas servidores disponibles para este titulo.</p>
-                )}
-              </div>
-            )}
-
-            {!activeUrl ? (
-              <div className="playback-panel__blocked">
-                <p>La fuente <strong>{active?.name}</strong> no tiene URL valida.</p>
-              </div>
-            ) : (
-              <iframe
-                key={activeUrl}
-                className="playback-panel__iframe"
-                src={activeUrl}
-                title={`Reproductor - ${active?.name ?? 'fuente'}`}
-                allow={IFRAME_ALLOW}
-                sandbox={IFRAME_SANDBOX}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                onLoad={onIframeLoad}
-              />
-            )}
-          </>
-        )}
+      <span className="playback-panel__lang-hint">Si el audio no es en espanol, cambia de servidor</span>
+      <div className="playback-panel__toolbar-actions">
+        {activeUrl&&!nv&&<button type="button" className={`playback-panel__action-btn ${extracting?'is-loading':''}`}
+          onClick={onExtract} disabled={extracting}
+          title={extracting?'Extrayendo video...':'Reproducir sin anuncios'}>
+          {extracting?<Loader2 size={15} className="playback-panel__spinner"/>:<Tv2 size={15}/>}
+        </button>}
+        {nv&&<button type="button" className="playback-panel__action-btn is-active-mode"
+          onClick={()=>{setNv(null);setLoading(true);setEf(false);}}
+          title="Volver al reproductor normal"><Tv2 size={15}/></button>}
+        {(hasNext||usable.some((s,i)=>i>ai&&s._valid))&&<button type="button" className="playback-panel__action-btn"
+          onClick={onNext} title="Siguiente servidor"><SkipForward size={15}/></button>}
+        <button type="button" className="playback-panel__action-btn"
+          onClick={onFs} title={fs?'Salir de pantalla completa':'Pantalla completa'}>
+          <Maximize2 size={15}/></button>
       </div>
     </div>
-  );
+    <div className="playback-panel__frame-wrap" ref={fwRef}>
+      {nv&&<video ref={vRef} className="playback-panel__native-video" controls autoPlay playsInline/>}
+      {ef&&!nv&&<div className="playback-panel__extract-hint"><AlertCircle size={14}/><span>No se pudo extraer - usando reproductor normal</span></div>}
+      {!nv&&<>
+        {loading&&activeUrl&&<div className="playback-panel__loading" aria-live="polite">
+          <Loader2 className="playback-panel__spinner" size={36} aria-hidden/>
+          <span>Cargando reproductor...</span></div>}
+        {timedOut&&<div className="playback-panel__timeout">
+          <AlertCircle size={32} strokeWidth={1.5}/>
+          <p>Este servidor no respondio.</p>
+          {hasNext?<button type="button" className="playback-panel__retry-btn" onClick={onNext}>
+            <SkipForward size={14}/> Probar siguiente servidor</button>
+          :<p className="playback-panel__timeout-hint">No hay mas servidores disponibles para este titulo.</p>}
+        </div>}
+        {!activeUrl?<div className="playback-panel__blocked"><p>La fuente <strong>{active?.name}</strong> no tiene URL valida.</p></div>
+        :<iframe ref={ifRef} key={activeUrl} className="playback-panel__iframe"
+          src={proxied||activeUrl}
+          title={`Reproductor - ${active?.name??'fuente'}`}
+          allow={IFRAME_ALLOW} sandbox={IFRAME_SANDBOX}
+          loading="lazy" referrerPolicy="no-referrer-when-downgrade"
+          onLoad={onLoad}/>
+        }
+      </>}
+    </div>
+  </div>);
 };
 
 export default PlaybackPanel;
