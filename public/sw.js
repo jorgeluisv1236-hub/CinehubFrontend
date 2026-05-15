@@ -1,4 +1,4 @@
-const CACHE = 'cinehub-v4';
+const CACHE = 'cinehub-v5';
 const JSON_URLS = [
   '/contents_compact.json',
   '/series_genres.json',
@@ -10,45 +10,45 @@ const JSON_URLS = [
   '/series_sources.json',
 ];
 
-// ── Aggressive ad/tracker domain blocklist ─────────────────────
+// ── Ad/tracker domain blocklist ───────────────────────────────
 const AD_DOMAINS = [
-  // Ad networks
+  // Major ad networks
   'doubleclick.net','googlesyndication.com','googleadservices.com','google-analytics.com',
-  'adnxs.com','popads.net','popcash.net','trafficjunky.net','juicyads.com',
-  'exoclick.com','plugrush.com','adspyglass.com','hilltopads.net',
-  'propellerads.com','adskeeper.co.uk','bidvertiser.com','clickadu.com',
-  'realsrv.com','tsyndicate.com','onclick.io','adsterra.com','popunder.net',
-  'mgid.com','taboola.com','outbrain.com','moatads.com','rubiconproject.com',
-  'pubmatic.com','openx.net','appnexus.com','criteo.com','hlsads.com',
-  'adservme.com','clicksfly.com',
-  // Link shorteners / redirect trackers
+  'adnxs.com','popads.net','popcash.net','popadscdn.net','trafficjunky.net',
+  'juicyads.com','exoclick.com','plugrush.com','adspyglass.com','hilltopads.net',
+  'hilltopads.com','propellerads.com','adskeeper.co.uk','bidvertiser.com',
+  'clickadu.com','realsrv.com','tsyndicate.com','onclick.io','onclickalgo.com',
+  'adsterra.com','popunder.net','mgid.com','taboola.com','outbrain.com',
+  'moatads.com','rubiconproject.com','pubmatic.com','openx.net','appnexus.com',
+  'criteo.com','hlsads.com','adservme.com','clicksfly.com','trafficstars.com',
+  'tubecorporate.com','etargetnet.com','passthroughads.com',
+  // Programmatic / RTB
+  'smartadserver.com','lijit.com','buzzcity.com','adsafeprotected.com',
+  'contextweb.com','casalemedia.com','bluekai.com','demdex.net','adsrvr.org',
+  'media.net','tidaltv.com','servedbyadbutler.com','adzerk.net','tremorhub.com',
+  'adroll.com','sharethrough.com','rlcdn.com','amazon-adsystem.com',
+  'sovrn.com','indexww.com','agkn.com','mathtag.com','bidswitch.net',
+  '3lift.com','advertising.com','atdmt.com','mookie1.com','nexage.com',
+  'c1exchange.com','adtrue.com','cpmstar.com','zemanta.com','adform.net',
+  'adform.com','yieldmo.com','sharethrough.com','undertone.com',
+  'conversantmedia.com','adsymptotic.com','adtelligent.com',
+  // Analytics / trackers
+  'scorecardresearch.com','quantserve.com','pixel.quantserve.com',
+  'pixel.mathtag.com','optimizely.com','hotjar.com','mouseflow.com',
+  'fullstory.com','logrocket.com','clarity.ms',
+  // Social ad trackers
+  'connect.facebook.net','ads.linkedin.com','analytics.twitter.com',
+  // Link shorteners / redirect chains
   'shrinkme.io','stfly.me','cuty.io','exe.io','clksite.com',
   'adf.ly','shorte.st','ouo.io','bc.vc','za.gl','ay.gy',
-  'smartadserver.com','lijit.com','buzzcity.com','adsafeprotected.com',
-  // Video-specific ad hosts
-  'vidhide.com','vidhidefast.com', // these are the video hosts themselves — they may serve ads
-  'streamwish.to','streamwish.com',
-  'lulustream.com','luluvdo.com',
-  'awish.com','dwish.com','sfastwish.com','strwish.com',
-  'wishfast.com','embedwish.com','abstream.com',
-  // Additional ad/tracker domains
-  'adservice.google.com','pagead2.googlesyndication.com',
-  'adserver.adtech.de','ads.pubmatic.com','ads.rubiconproject.com',
-  'ad.doubleclick.net','adservice.google.com.vn',
-  'static.doubleclick.net','ad.atdmt.com','ads.yahoo.com',
-  'srv.buysellads.com','s3.amazonaws.com/ssl.ads',
-  'bid.g.doubleclick.net','tpc.googlesyndication.com',
-  'cm.g.doubleclick.net','mediavisor.doubleclick.net',
-  'fonts.googleapis.com', // keep this — only block if used for tracking
-  // C2/analytics
-  'pixel.quantserve.com','b.scorecardresearch.com',
-  'sb.scorecardresearch.com','pixel.mathtag.com',
-  'logx.optimizely.com','cdn.optimizely.com',
-  // Social trackers
-  'connect.facebook.net','www.facebook.com/tr',
-  'analytics.twitter.com','ads.linkedin.com',
-  // Safe browsing / googleapis (often used by ad frameworks)
-  'ajax.googleapis.com/ajax/libs/jquery', // block jquery from google — forces local version
+  'shortfly.com','fc.lc','fc.clickclicklick.info','rlu.ru',
+  'shrinkearn.com','link1s.com','linkvertise.com','rekonise.com',
+  // Streaming-site specific ad/popup networks
+  'hlsads.com','vidads.net','adside.net','popundex.com',
+  'cpx.to','adsspeed.com','videosadv.com','teasermedia.net',
+  'affbuzzads.com','richpush.co','megapu.sh','evadav.com',
+  'kadam.net','galaksion.com','adcash.com','zeropark.com',
+  'pushground.com','admaven.com','dntx.com','clickaine.com',
 ];
 
 const AD_PATH_PATTERNS = [
