@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Navbar from './components/Navbar';
-import CategoryBar from './components/CategoryBar';
 import Hero from './components/Hero';
 import MovieGrid from './components/MovieGrid';
 import MovieModal from './components/MovieModal';
@@ -28,7 +27,6 @@ function App() {
   const [selectedContent, setSelectedContent] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSection, setActiveSection] = useState('Inicio'); // 'Inicio'|'Películas'|'Series'|'Mi Lista'
-  const [activeGenre, setActiveGenre] = useState('Todo');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('cinehub_dark') !== 'false');
   const [batchSize, setBatchSize] = useState(() => Number(localStorage.getItem('cinehub_batch')) || 60);
   const [showSettings, setShowSettings] = useState(false);
@@ -69,10 +67,6 @@ function App() {
   const handleSectionChange = useCallback((section) => {
     setActiveSection(section);
     setSearchQuery('');
-    setActiveGenre('Todo');
-    setFilterYear('');
-    setFilterDuration('');
-    setFilterLanguage('');
   }, []);
 
   const handleBatchSize = useCallback((size) => {
@@ -143,25 +137,24 @@ function App() {
 
   const trimmedSearch = debouncedSearch.trim();
 
-  // Spanish genre label → substrings that appear in TMDB genre names (English + Spanish)
-  const GENRE_MAP = {
-    'Acción':         ['action', 'acción', 'adventure', 'action & adventure'],
-    'Drama':          ['drama'],
-    'Comedia':        ['comedy', 'comedia'],
-    'Terror':         ['horror', 'terror'],
-    'Thriller':       ['thriller', 'suspenso', 'mystery'],
-    'Ciencia Ficción':['sci-fi', 'science fiction', 'ciencia ficción', 'sci-fi & fantasy'],
-    'Romance':        ['romance'],
-    'Animación':      ['animation', 'animación', 'anime'],
-    'Documental':     ['documentary', 'documental'],
-    'Crimen':         ['crime', 'crimen'],
-    'Fantasía':       ['fantasy', 'fantasía', 'sci-fi & fantasy'],
-    'Familia':        ['family', 'familia'],
-    'Historia':       ['history', 'historia'],
-    'Música':         ['music', 'música'],
-    'Western':        ['western'],
-    'Guerra':         ['war', 'guerra'],
-  };
+  const GENRE_ROWS = [
+    { label: 'Acción',          terms: ['action', 'acción', 'adventure', 'action & adventure'] },
+    { label: 'Drama',           terms: ['drama'] },
+    { label: 'Comedia',         terms: ['comedy', 'comedia'] },
+    { label: 'Terror',          terms: ['horror', 'terror'] },
+    { label: 'Thriller',        terms: ['thriller', 'suspenso', 'mystery'] },
+    { label: 'Ciencia Ficción', terms: ['sci-fi', 'science fiction', 'ciencia ficción', 'sci-fi & fantasy'] },
+    { label: 'Animación',       terms: ['animation', 'animación', 'anime'] },
+    { label: 'Romance',         terms: ['romance'] },
+    { label: 'Crimen',          terms: ['crime', 'crimen'] },
+    { label: 'Fantasía',        terms: ['fantasy', 'fantasía', 'sci-fi & fantasy'] },
+    { label: 'Familia',         terms: ['family', 'familia'] },
+    { label: 'Documental',      terms: ['documentary', 'documental'] },
+    { label: 'Historia',        terms: ['history', 'historia'] },
+    { label: 'Música',          terms: ['music', 'música'] },
+    { label: 'Western',         terms: ['western'] },
+    { label: 'Guerra',          terms: ['war', 'guerra'] },
+  ];
 
   // Section-filtered base list
   const sectionMovies = useMemo(() => {
@@ -172,44 +165,36 @@ function App() {
       const ids = new Set(historyItems.map(r => Number(r.content_id)));
       return movies.filter(m => ids.has(Number(m.id)));
     }
-    return movies; // Inicio
+    return movies;
   }, [movies, activeSection, watchlistIds, historyItems]);
 
-  // Genre + advanced filters applied on top of section filter
-  const displayMovies = useMemo(() => {
-    let result = sectionMovies;
-
-    // Apply genre filter
-    if (activeSection !== 'Mi Lista' && activeSection !== 'Historial' && activeGenre !== 'Todo') {
-      const terms = GENRE_MAP[activeGenre] || [activeGenre.toLowerCase()];
-      result = result.filter((m) =>
-        (m.genres || []).some((g) => {
+  // Per-genre rows from sectionMovies
+  const genreRows = useMemo(() => {
+    return GENRE_ROWS.map(({ label, terms }) => ({
+      label,
+      items: sectionMovies.filter(m =>
+        (m.genres || []).some(g => {
           const name = g.name?.toLowerCase() || '';
-          return terms.some((t) => name.includes(t));
+          return terms.some(t => name.includes(t));
         })
-      );
-    }
+      ),
+    })).filter(r => r.items.length > 0);
+  }, [sectionMovies]);
 
-    return result;
-  }, [sectionMovies, activeGenre, activeSection]);
-
-  // Search results from displayMovies
+  // Search results from sectionMovies
   const filteredMovies = useMemo(() => {
-    if (!trimmedSearch) return displayMovies;
-    return rankedSearchMovies(displayMovies, debouncedSearch);
-  }, [displayMovies, debouncedSearch]);
+    if (!trimmedSearch) return sectionMovies;
+    return rankedSearchMovies(sectionMovies, debouncedSearch);
+  }, [sectionMovies, debouncedSearch]);
 
-  // Hero: first movie with backdrop from displayMovies
+  // Hero: #1 trending with backdrop, else first sectionMovie with backdrop
   const heroMovie = useMemo(() => {
     const hasBackdrop = (m) => {
       const b = m?.artwork?.backdrop;
-      return [b?.large, b?.medium, b?.small].some(
-        (u) => typeof u === 'string' && u.trim().length > 0
-      );
+      return [b?.large, b?.medium, b?.small].some(u => typeof u === 'string' && u.trim().length > 0);
     };
-    // Use #1 trending with backdrop, fallback to first displayMovie with backdrop
-    return trendingMovies.find(hasBackdrop) || displayMovies.find(hasBackdrop) || displayMovies[0] || null;
-  }, [trendingMovies, displayMovies]);
+    return trendingMovies.find(hasBackdrop) || sectionMovies.find(hasBackdrop) || sectionMovies[0] || null;
+  }, [trendingMovies, sectionMovies]);
 
   const handleOpenModal = useCallback((item) => {
     window.history.replaceState({}, '', `?id=${item.id}`);
@@ -228,10 +213,10 @@ function App() {
   }, []);
 
   const handleSorprendeme = useCallback(() => {
-    if (!displayMovies.length) return;
-    const pick = displayMovies[Math.floor(Math.random() * displayMovies.length)];
+    if (!sectionMovies.length) return;
+    const pick = sectionMovies[Math.floor(Math.random() * sectionMovies.length)];
     handleOpenModal(pick);
-  }, [displayMovies, handleOpenModal]);
+  }, [sectionMovies, handleOpenModal]);
 
   // Auth gate: show spinner while Supabase resolves session
   if (authLoading) {
@@ -248,7 +233,6 @@ function App() {
     return (
       <div className="app-container">
         <Navbar searchQuery={searchQuery} onSearchChange={setSearchQuery} activeSection={activeSection} onSectionChange={handleSectionChange} onOpenSettings={() => setShowSettings(true)} />
-        <CategoryBar activeGenre={activeGenre} onGenreChange={setActiveGenre} />
         <div className="skeleton-hero" />
         <div className="container" style={{ paddingTop: '2rem' }}>
           <div className="skeleton-section-title" />
@@ -275,13 +259,10 @@ function App() {
         onSectionChange={handleSectionChange}
         onOpenSettings={() => setShowSettings(true)}
       />
-      {activeSection !== 'Mi Lista' && activeSection !== 'Historial' && (
-        <CategoryBar activeGenre={activeGenre} onGenreChange={setActiveGenre} />
-      )}
 
       <main style={{ paddingTop: '68px' }}>
-        {/* Hero only on Inicio */}
-        {!trimmedSearch && activeSection === 'Inicio' && (
+        {/* Hero on Inicio and Películas and Series (not search/list/historial) */}
+        {!trimmedSearch && ['Inicio', 'Películas', 'Series'].includes(activeSection) && (
           <Hero movie={heroMovie} onOpenModal={handleOpenModal} onSorprendeme={handleSorprendeme} />
         )}
 
@@ -303,59 +284,60 @@ function App() {
               )}
             </>
           ) : activeSection === 'Mi Lista' ? (
-            <>
-              {displayMovies.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--fg-muted)' }}>
-                  <p style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Tu lista está vacía</p>
-                  <p style={{ fontSize: '0.9rem' }}>Agrega películas y series con el botón + en cada título.</p>
-                </div>
-              ) : (
-                <MovieGrid
-                  title={`Mi Lista (${displayMovies.length})`}
-                  movies={displayMovies}
-                  onOpenModal={handleOpenModal}
-                  batchSize={batchSize}
-                  watchedIds={watchedIds}
-                  onMarkWatched={markWatched}
-                />
-              )}
-            </>
+            sectionMovies.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--fg-muted)' }}>
+                <p style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Tu lista está vacía</p>
+                <p style={{ fontSize: '0.9rem' }}>Agrega películas y series con el botón + en cada título.</p>
+              </div>
+            ) : (
+              <MovieGrid
+                title={`Mi Lista (${sectionMovies.length})`}
+                movies={sectionMovies}
+                onOpenModal={handleOpenModal}
+                batchSize={batchSize}
+                watchedIds={watchedIds}
+                onMarkWatched={markWatched}
+              />
+            )
           ) : activeSection === 'Historial' ? (
-            <>
-              {displayMovies.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--fg-muted)' }}>
-                  <p style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Tu historial está vacío</p>
-                  <p style={{ fontSize: '0.9rem' }}>Los títulos que veas aparecerán aquí.</p>
-                </div>
-              ) : (
-                <MovieGrid
-                  title={`Historial (${displayMovies.length})`}
-                  movies={displayMovies}
-                  onOpenModal={handleOpenModal}
-                  batchSize={batchSize}
-                  watchedIds={watchedIds}
-                  onMarkWatched={markWatched}
-                />
-              )}
-            </>
-          ) : activeSection === 'Películas' ? (
-            <>
-              <MovieGrid title="Películas" movies={displayMovies} onOpenModal={handleOpenModal} batchSize={batchSize} watchedIds={watchedIds} onMarkWatched={markWatched} />
-              <MovieGrid title="Más recientes" movies={displayMovies.slice().reverse()} onOpenModal={handleOpenModal} batchSize={batchSize} watchedIds={watchedIds} onMarkWatched={markWatched} />
-            </>
-          ) : activeSection === 'Series' ? (
-            <MovieGrid title="Series" movies={displayMovies} onOpenModal={handleOpenModal} batchSize={batchSize} watchedIds={watchedIds} onMarkWatched={markWatched} />
+            sectionMovies.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--fg-muted)' }}>
+                <p style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Tu historial está vacío</p>
+                <p style={{ fontSize: '0.9rem' }}>Los títulos que veas aparecerán aquí.</p>
+              </div>
+            ) : (
+              <MovieGrid
+                title={`Historial (${sectionMovies.length})`}
+                movies={sectionMovies}
+                onOpenModal={handleOpenModal}
+                batchSize={batchSize}
+                watchedIds={watchedIds}
+                onMarkWatched={markWatched}
+              />
+            )
           ) : (
+            /* Inicio / Películas / Series — genre rows */
             <>
-              {trendingMovies.length > 0 && (
+              {activeSection === 'Inicio' && trendingMovies.length > 0 && (
                 <MovieGrid title="🔥 Tendencias esta semana" movies={trendingMovies} onOpenModal={handleOpenModal} batchSize={20} watchedIds={watchedIds} onMarkWatched={markWatched} />
               )}
-              {upcoming.length > 0 && (
+              {activeSection === 'Inicio' && upcoming.length > 0 && (
                 <MovieGrid title="🎬 Próximos estrenos" movies={upcoming} onOpenModal={handleOpenModal} batchSize={10} watchedIds={watchedIds} onMarkWatched={markWatched} />
               )}
-              <MovieGrid title="Top 10 Hoy" movies={displayMovies.slice(0, 10)} onOpenModal={handleOpenModal} top10 batchSize={10} watchedIds={watchedIds} onMarkWatched={markWatched} />
-              <MovieGrid title="Tendencias" movies={displayMovies} onOpenModal={handleOpenModal} batchSize={batchSize} watchedIds={watchedIds} onMarkWatched={markWatched} />
-              <MovieGrid title="Nuevos Lanzamientos" movies={displayMovies.slice().reverse()} onOpenModal={handleOpenModal} batchSize={batchSize} watchedIds={watchedIds} onMarkWatched={markWatched} />
+              {activeSection === 'Inicio' && (
+                <MovieGrid title="Top 10 Hoy" movies={sectionMovies.slice(0, 10)} onOpenModal={handleOpenModal} top10 batchSize={10} watchedIds={watchedIds} onMarkWatched={markWatched} />
+              )}
+              {genreRows.map(({ label, items }) => (
+                <MovieGrid
+                  key={label}
+                  title={label}
+                  movies={items}
+                  onOpenModal={handleOpenModal}
+                  batchSize={batchSize}
+                  watchedIds={watchedIds}
+                  onMarkWatched={markWatched}
+                />
+              ))}
             </>
           )}
         </div>
