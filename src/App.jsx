@@ -261,8 +261,8 @@ function App() {
       />
 
       <main style={{ paddingTop: '68px' }}>
-        {/* Hero on Inicio and Películas and Series (not search/list/historial) */}
-        {!trimmedSearch && ['Inicio', 'Películas', 'Series'].includes(activeSection) && (
+        {/* Hero only on Inicio */}
+        {!trimmedSearch && activeSection === 'Inicio' && (
           <Hero movie={heroMovie} onOpenModal={handleOpenModal} onSorprendeme={handleSorprendeme} />
         )}
 
