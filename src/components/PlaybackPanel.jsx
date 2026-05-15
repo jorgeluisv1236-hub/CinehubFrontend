@@ -5,7 +5,11 @@ import './PlaybackPanel.css';
 
 const IFRAME_ALLOW =
   'accelerometer *; autoplay *; clipboard-write *; encrypted-media *; gyroscope *; picture-in-picture *; web-share *; fullscreen *';
-const IFRAME_SANDBOX = undefined;
+
+// Blocks JS-triggered top-frame redirects (window.top.location = "...") while
+// still allowing scripts, same-origin storage, popups, and user-clicked links.
+const IFRAME_SANDBOX =
+  'allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-top-navigation-by-user-activation';
 const TIMEOUT_MS = 18000;
 
 
