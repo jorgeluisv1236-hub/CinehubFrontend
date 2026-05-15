@@ -20,13 +20,14 @@ export function useTmdbData(item) {
       try {
         // Use pre-fetched tmdbId if available, otherwise search TMDB
         let tmdbId = item.tmdbId ? Number(item.tmdbId) : null;
+        let searchResult = null;
         if (!tmdbId) {
-          const result = await searchTmdb(item.title, year, type);
-          if (!result) { setLoading(false); return; }
-          tmdbId = result.id;
+          searchResult = await searchTmdb(item.title, year, type);
+          if (!searchResult) { setLoading(false); return; }
+          tmdbId = searchResult.id;
         }
 
-        // Skip trailer fetch if already available in item data
+        // Skip trailer fetch if already pre-fetched in item data
         const [details, cast, trailerKeyFetched, similar] = await Promise.all([
           getTmdbDetails(tmdbId, type),
           getTmdbCast(tmdbId, type),
@@ -49,9 +50,9 @@ export function useTmdbData(item) {
 
         const enriched = {
           tmdbId,
-          rating: result.vote_average?.toFixed(1),
-          voteCount: result.vote_count,
-          overview: details?.overview || result.overview || '',
+          rating: (searchResult?.vote_average ?? details?.vote_average)?.toFixed(1),
+          voteCount: searchResult?.vote_count ?? details?.vote_count,
+          overview: details?.overview || searchResult?.overview || '',
           runtime: type === 'movie' ? details?.runtime : null,
           originCountry: (details?.origin_country || details?.production_countries?.map(c => c.iso_3166_1) || []),
           certification,
