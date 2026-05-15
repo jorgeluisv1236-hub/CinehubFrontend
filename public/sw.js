@@ -1,4 +1,4 @@
-const CACHE = 'cinehub-v2';
+const CACHE = 'cinehub-v3';
 const JSON_URLS = [
   '/contents_compact.json',
   '/series_genres.json',
