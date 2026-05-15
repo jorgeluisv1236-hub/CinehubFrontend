@@ -8,64 +8,6 @@ const IFRAME_ALLOW =
 const IFRAME_SANDBOX = undefined;
 const TIMEOUT_MS = 18000;
 
-const AD_KW = [
-  'doubleclick','googlesyndication','googleadservices','google-analytics',
-  'adnxs','popads','popcash','trafficjunky','juicyads','exoclick',
-  'plugrush','adspyglass','hilltopads','propellerads','adskeeper',
-  'clickadu','realsrv','tsyndicate','onclick','adsterra',
-  'mgid','taboola','outbrain','moatads','rubiconproject',
-  'pubmatic','openx','appnexus','criteo','hlsads','adservme',
-  'smartadserver','lijit','buzzcity','adsafeprotected',
-  'adservice','affiliate','tracking','pixel','popunder',
-  'popup','banner','advert','sponsor','promo',
-];
-
-// ─── Lightbridge Engine ─────────────────────────────────────────
-// Operates on the iframe from OUTSIDE via contentDocument/contentWindow
-// (same-origin proxy). Embed code runs 100% unmodified.
-function isAd(s) {
-  if (!s || typeof s !== 'string') return false;
-  const l = s.toLowerCase();
-  return AD_KW.some(k => l.includes(k));
-}
-function lbClean(doc) {
-  if (!doc) return;
-  doc.querySelectorAll('script[src]').forEach(el => { if (isAd(el.src)) el.remove(); });
-  doc.querySelectorAll('iframe[src]').forEach(el => { if (isAd(el.src)) el.remove(); });
-  doc.querySelectorAll('[class*="ad"],[id*="ad"],[class*="banner"],[id*="banner"],[class*="popup"],[id*="popup"]').forEach(el => el.remove());
-}
-function lbWatch(doc) {
-  if (!doc) return null;
-  const obs = new MutationObserver(muts => {
-    for (const m of muts) {
-      for (const n of m.addedNodes) {
-        if (n.nodeType !== 1) continue;
-        const el = n;
-        if (isAd(el.src||'')||isAd(el.className||'')||isAd(el.id||'')) { el.remove(); continue; }
-        if ((el.tagName==='SCRIPT'||el.tagName==='IFRAME') && isAd(el.src||el.getAttribute('src')||'')) el.remove();
-      }
-    }
-  });
-  obs.observe(doc, { childList: true, subtree: true });
-  return obs;
-}
-function lbOverride(win) {
-  if (!win) return;
-  try {
-    win.open = function(){ return null; };
-    const f = win.fetch;
-    win.fetch = function(i,o) {
-      const u = typeof i==='string'?i:(i&&i.url?i.url:'');
-      if (u&&isAd(u)) return Promise.resolve(new Response('',{status:200}));
-      return f.call(win,i,o);
-    };
-    const xo = win.XMLHttpRequest.prototype.open;
-    win.XMLHttpRequest.prototype.open = function(m,u) {
-      if (u&&isAd(typeof u==='string'?u:String(u))) return;
-      return xo.apply(this,arguments);
-    };
-  } catch(e) {}
-}
 
 function isValidUrl(url) {
   if (!url || typeof url !== 'string') return false;
@@ -74,7 +16,6 @@ function isValidUrl(url) {
   if (t.includes('reemplaza_con_tu_file_id')) return false;
   try { return !!new URL(t).hostname; } catch { return false; }
 }
-function proxyUrl(u) { return u ? '/api/proxy?url='+encodeURIComponent(u.trim()) : ''; }
 async function extUrl(embedUrl, signal) {
   const r = await fetch('/api/extract?url='+encodeURIComponent(embedUrl), { signal });
   if (!r.ok) return null;
@@ -104,13 +45,10 @@ const PlaybackPanel = ({ title, sources = [] }) => {
   const ifRef = useRef(null);
   const vRef = useRef(null);
   const toRef = useRef(null);
-  const obsRef = useRef(null);
-  const lbRef = useRef(false);
 
   useEffect(()=>{
     setAi(fvi>=0?fvi:0); setLoading(true); setTimedOut(false);
     setNv(null); setExtracting(false); setEf(false);
-    lbRef.current=false; if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}
   },[fvi,usable]);
   useEffect(()=>{
     clearTimeout(toRef.current);
@@ -122,27 +60,6 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     document.addEventListener('fullscreenchange',o);
     return ()=>document.removeEventListener('fullscreenchange',o);
   },[]);
-
-  // ── Lightbridge: post-load external ad blocking ──
-  useEffect(()=>{
-    if(nv) return;
-    const ifr = ifRef.current;
-    if(!ifr||lbRef.current) return;
-    const poll = setInterval(()=>{
-      try {
-        const d = ifr.contentDocument, w = ifr.contentWindow;
-        if(d&&w&&d.body){
-          lbClean(d);
-          const o = lbWatch(d);
-          if(o) obsRef.current=o;
-          lbOverride(w);
-          lbRef.current=true;
-          clearInterval(poll);
-        }
-      } catch(e){ clearInterval(poll); }
-    },200);
-    return ()=>{ clearInterval(poll); if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;} lbRef.current=false; };
-  },[nv,ai]);
 
   // ── Parent-side protection: popups, focus, clicks, frame-busting ──
   useEffect(()=>{
@@ -192,13 +109,11 @@ const PlaybackPanel = ({ title, sources = [] }) => {
 
   const active = usable[ai] ?? null;
   const activeUrl = active?._valid ? active.embedUrl.trim() : '';
-  const proxied = useMemo(()=>proxyUrl(activeUrl),[activeUrl]);
   const hasNext = ai < usable.length - 1;
 
   const onSelect = useCallback((idx)=>{
     setAi(idx); setLoading(true); setTimedOut(false);
     setNv(null); setExtracting(false); setEf(false);
-    lbRef.current=false; if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}
   },[]);
 
   const onLoad = useCallback(()=>{
@@ -290,7 +205,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
         </div>}
         {!activeUrl?<div className="playback-panel__blocked"><p>La fuente <strong>{active?.name}</strong> no tiene URL valida.</p></div>
         :<iframe ref={ifRef} key={activeUrl} className="playback-panel__iframe"
-          src={proxied||activeUrl}
+          src={activeUrl}
           title={`Reproductor - ${active?.name??'fuente'}`}
           allow={IFRAME_ALLOW} sandbox={IFRAME_SANDBOX}
           loading="lazy" referrerPolicy="no-referrer-when-downgrade"
