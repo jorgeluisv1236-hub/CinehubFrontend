@@ -6,9 +6,8 @@ import './PlaybackPanel.css';
 const IFRAME_ALLOW =
   'accelerometer *; autoplay *; clipboard-write *; encrypted-media *; gyroscope *; picture-in-picture *; web-share *; fullscreen *';
 
-// Sandbox not set intentionally -- /api/embed proxy handles ad/popup/redirect
-// blocking server-side. Sandbox causes embed sites to detect restrictions
-// and refuse to play ("not available due to sandbox iframe").
+// No sandbox — embed sites detect it and refuse to play.
+// Protection comes from parent-page JS traps + service worker instead.
 const IFRAME_SANDBOX = undefined;
 
 const TIMEOUT_MS = 14000;
@@ -24,11 +23,6 @@ function isProbablyValidEmbedUrl(url) {
   } catch {
     return false;
   }
-}
-
-function proxyEmbedUrl(embedUrl) {
-  if (!embedUrl) return '';
-  return `/api/embed?url=${encodeURIComponent(embedUrl.trim())}`;
 }
 
 async function extractVideoUrl(embedUrl, signal) {
@@ -91,8 +85,13 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
+  // ─── STEALTH 4-LAYER PROTECTION ───
+  // Runs only in iframe mode. Does NOT modify the embed content.
+  // Layer 1: Kill popups     Layer 2: Focus thief
+  // Layer 3: First-click     Layer 4: Frame-busting defense
   useEffect(() => {
     if (nativeVideo) return;
+
     const origOpen = window.open;
     window.open = () => null;
 
@@ -117,12 +116,29 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     };
     document.addEventListener('click', onClickCapture, true);
 
+    // Layer 4: Frame-busting — detect if an iframe redirects this page
+    const legitOrigin = window.location.origin + '/';
+    let userNav = false;
+    const markNav = () => { userNav = true; setTimeout(() => userNav = false, 3000); };
+    document.addEventListener('click', markNav);
+    document.addEventListener('submit', markNav);
+
+    const bustGuard = setInterval(() => {
+      const href = window.location.href;
+      if (!href.startsWith(legitOrigin) && !href.startsWith('blob:') && !href.startsWith('about:') && !userNav) {
+        window.location.replace(legitOrigin);
+      }
+    }, 300);
+
     return () => {
       window.open = origOpen;
       window.removeEventListener('blur', onBlur);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('click', onClickCapture, true);
       clearTimeout(focusTimer);
+      document.removeEventListener('click', markNav);
+      document.removeEventListener('submit', markNav);
+      clearInterval(bustGuard);
     };
   }, [nativeVideo]);
 
@@ -144,7 +160,6 @@ const PlaybackPanel = ({ title, sources = [] }) => {
 
   const active = usable[activeIndex] ?? null;
   const activeUrl = active?._valid ? active.embedUrl.trim() : '';
-  const proxiedUrl = useMemo(() => proxyEmbedUrl(activeUrl), [activeUrl]);
   const hasNext = activeIndex < usable.length - 1;
 
   const onSelect = useCallback((idx) => {
@@ -220,6 +235,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
         });
     }, 2000);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUrl]);
 
   if (!usable.length) {
@@ -344,7 +360,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
               <iframe
                 key={activeUrl}
                 className="playback-panel__iframe"
-                src={proxiedUrl || activeUrl}
+                src={activeUrl}
                 title={`Reproductor - ${active?.name ?? 'fuente'}`}
                 allow={IFRAME_ALLOW}
                 sandbox={IFRAME_SANDBOX}
