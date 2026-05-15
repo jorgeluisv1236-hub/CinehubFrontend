@@ -1,64 +1,43 @@
-// Known ad/tracker domains stripped server-side from the HTML
+// High-impact ad/tracker substrings for server-side HTML stripping
+// Focused on what actually appears in streamwish/vidhide embeds
 const AD_KEYWORDS = [
   'doubleclick', 'googlesyndication', 'googleadservices', 'google-analytics',
   'adnxs', 'popads', 'popcash', 'trafficjunky', 'juicyads', 'exoclick',
   'plugrush', 'adspyglass', 'hilltopads', 'propellerads', 'adskeeper',
-  'bidvertiser', 'clickadu', 'realsrv', 'tsyndicate', 'onclick',
-  'adsterra', 'mgid', 'taboola', 'outbrain', 'moatads', 'rubiconproject',
+  'clickadu', 'realsrv', 'tsyndicate', 'onclick', 'adsterra', 'popunder',
+  'mgid', 'taboola', 'outbrain', 'moatads', 'rubiconproject',
   'pubmatic', 'openx', 'appnexus', 'criteo', 'hlsads', 'adservme',
-  'clicksfly', 'shrinkme', 'adf.ly', 'shorte.st', 'ouo.io', 'exe.io',
-  'clksite', 'smartadserver', 'lijit', 'buzzcity', 'adsafeprotected',
-  'adap.tv', 'adition', 'ad4game', 'adbutler', 'adform', 'adgebra',
-  'adglare', 'adiquity', 'adkernel', 'adman', 'admetrics', 'adreactor',
-  'adroll', 'ads24', 'ads30', 'ads2', 'adsbookie', 'adservice',
-  'adtech', 'adthrive', 'adtiger', 'adventory', 'adzerk', 'affiliate',
-  'amazon-adsystem', 'bluekai', 'brainient', 'britever', 'casalemedia',
-  'contextweb', 'convertro', 'crwdcntrl', 'demdex', 'dotomi',
-  'exelator', 'eyeota', 'fifty-six', 'googleadservices',
-  'impdesk', 'indexww', 'innovid', 'intentiq', 'krux',
-  'liveintent', 'lotame', 'media6degrees', 'mediaforge', 'mexad',
-  'ml314', 'moolahmedia', 'nativeads', 'neustar', 'nielsen',
-  'nuffnang', 'optimizely', 'orbitx', 'pepperjam', 'phluant',
-  'picadmedia', 'pixels', 'platformtwitter', 'pulsepoint',
-  'quantserve', 'quantummetric', 'revjet', 'revrtb', 'rfihub',
-  'rnmd', 'rokt', 'rtbhouse', 'rubicon', 'sabio', 'scanscout',
-  'scorecardresearch', 'segment', 'sharethrough', 'simpli.fi',
-  'sitescout', 'smaato', 'smartadserver', 'socialtwist',
-  'sociomantic', 'sojern', 'specificmedia', 'spotxchange',
-  'stickyadstv', 'sumo', 'supersonicads', 'swollab', 'tapad',
-  'thetradedesk', 'tidal', 'tidaltv', 'tracking', 'tradead',
-  'tremorhub', 'tribalfusion', 'triplelift', 'trueffect',
-  'tumri', 'turn', 'twyn', 'underscore', 'undertone',
-  'veoxa', 'verizonmedia', 'vertamedia', 'vibrantmedia',
-  'videology', 'vizu', 'xad', 'xaxis', 'yadro', 'yahooads',
-  'yieldbot', 'yieldmo', 'yieldtraffic', 'yume',
-  'zergnet', 'zeta',
+  'clicksfly', 'smartadserver', 'lijit', 'buzzcity', 'adsafeprotected',
+  'adservice', 'affiliate', 'tracking', 'pixel',
 ];
 
-function containsAdDomain(url) {
-  try {
-    const u = typeof url === 'string' ? new URL(url) : url;
-    return AD_KEYWORDS.some(k => u.hostname.includes(k) || u.pathname.includes(k));
-  } catch { return false; }
+// Check if a URL string matches any ad keyword (faster than regex alternation)
+function matchesAdKeyword(str) {
+  if (!str || typeof str !== 'string') return false;
+  const lower = str.toLowerCase();
+  for (let i = 0; i < AD_KEYWORDS.length; i++) {
+    if (lower.includes(AD_KEYWORDS[i])) return true;
+  }
+  return false;
 }
 
 function stripAdElements(html) {
-  // Remove script tags loading from ad domains
+  // Remove <script src="..."> where src contains an ad keyword
   let cleaned = html.replace(
-    /<script[^>]*src=["'][^"']*(?:' + AD_KEYWORDS.join('|') + ')[^"']*["'][^>]*>[\s\S]*?<\/script>/gi,
-    '<!-- ad script removed -->'
+    /<script[^>]*src=["']([^"']*?)["'][^>]*>[\s\S]*?<\/script>/gi,
+    (match, src) => matchesAdKeyword(src) ? '<!-- ad script removed -->' : match
   );
 
-  // Remove inline scripts that look like ad code
+  // Remove inline scripts containing ad-like code
   cleaned = cleaned.replace(
-    /<script[^>]*>[\s\S]*?(?:atob\(|popunder|popup|adsbygoogle|adblock|exoClick|propeller|'ad'\+'s'|'ad'\+'v'|ad_load|showAd|adTimer|adContainer|adDiv|adSlot)[\s\S]*?<\/script>/gi,
+    /<script[^>]*>[\s\S]*?(?:popunder|popup|adsbygoogle|exoClick|propeller|adblock|ad_load|showAd|adTimer|adContainer|adDiv|adSlot|atob\s*\()[\s\S]*?<\/script>/gi,
     '<!-- ad inline removed -->'
   );
 
   // Remove iframes pointing to ad domains
   cleaned = cleaned.replace(
-    /<iframe[^>]*src=["'][^"']*(?:doubleclick|googlesyndication|popads|adsterra|propellerads|exoclick|adnxs)[^"']*["'][^>]*>[\s\S]*?<\/iframe>/gi,
-    '<!-- ad iframe removed -->'
+    /<iframe[^>]*src=["']([^"']*?)["'][^>]*>[\s\S]*?<\/iframe>/gi,
+    (match, src) => matchesAdKeyword(src) ? '<!-- ad iframe removed -->' : match
   );
 
   return cleaned;
@@ -87,11 +66,16 @@ export default async function handler(req, res) {
   // Server-side: strip known ad elements
   html = stripAdElements(html);
 
+  // Serialize AD_KEYWORDS for the browser-side script
+  const adKwJson = JSON.stringify(AD_KEYWORDS);
+
   // Comprehensive anti-ad + anti-popup injection script
   const blocker = `<script>(function(){
   'use strict';
+  var AD = ${adKwJson};
+  function isAd(url){ return url && AD.some(function(k){ return url.indexOf(k) !== -1; }); }
 
-  // ── 1. Block window.open completely ──
+  // ── 1. Block window.open ──
   var noop = function(){};
   var fakeWin = { focus:noop, blur:noop, close:noop, closed:false,
     location: { href:'', assign:noop, replace:noop, reload:noop },
@@ -101,97 +85,112 @@ export default async function handler(req, res) {
     open:function(){ return fakeWin; }, closed:false };
   window.open = function(){ return fakeWin; };
 
-  // ── 2. Block beforeunload (prevents redirect-on-leave tricks) ──
+  // ── 2. Block beforeunload (prevents redirect-on-leave) ──
   window.addEventListener('beforeunload', function(e){
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    delete e.returnValue;
+    e.preventDefault(); e.stopImmediatePropagation(); delete e.returnValue;
   }, true);
 
-  // ── 3. Block unload (some embeds redirect on unload) ──
+  // ── 3. Block unload ──
   window.addEventListener('unload', function(e){
-    e.preventDefault();
-    e.stopImmediatePropagation();
+    e.preventDefault(); e.stopImmediatePropagation();
   }, true);
 
-  // ── 4. Block history manipulation (prevents URL changes in embed) ──
-  try {
-    var _pushState = history.pushState;
-    var _replaceState = history.replaceState;
-    history.pushState = function(){};
-    history.replaceState = function(){};
-    // Restore after a small delay so the page loads normally, then block
-    setTimeout(function(){
-      history.pushState = function(){};
-      history.replaceState = function(){};
-    }, 500);
-  } catch(e){}
+  // ── 4. Block history manipulation ──
+  try { history.pushState = function(){}; history.replaceState = function(){}; } catch(e){}
 
-  // ── 5. Block top-level navigation ──
+  // ── 5. Block top/parent access ──
   try {
     Object.defineProperty(window, 'top', { get: function(){ return window; }, configurable: false });
     Object.defineProperty(window, 'parent', { get: function(){ return window; }, configurable: false });
   } catch(e){}
 
-  // ── 6. Block window.location.replace/assign redirects ──
+  // ── 6. Block location.replace/assign to external domains ──
   try {
-    var _locReplace = window.location.replace;
-    var _locAssign = window.location.assign;
-    var _locHref = Object.getOwnPropertyDescriptor(Window.prototype, 'location');
-    var blockedHref = window.location.href;
+    var _locR = window.location.replace;
+    var _locA = window.location.assign;
     window.location.replace = function(v){
       if(v && v.indexOf(document.domain) === -1 && v.indexOf('about:blank') === -1) return;
-      _locReplace.call(window.location, v);
+      _locR.call(window.location, v);
     };
     window.location.assign = function(v){
       if(v && v.indexOf(document.domain) === -1 && v.indexOf('about:blank') === -1) return;
-      _locAssign.call(window.location, v);
+      _locA.call(window.location, v);
     };
   } catch(e){}
 
-  // ── 7. Intercept fetch requests to ad domains ──
-  var origFetch = window.fetch;
+  // ── 7. Intercept fetch to ad domains ──
+  var _fetch = window.fetch;
   window.fetch = function(input, opts){
     var url = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
-    if(url && (AD_KEYWORDS.some(function(k){ return url.indexOf(k) !== -1; }))){
-      return Promise.resolve(new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } }));
-    }
-    return origFetch.call(this, input, opts);
+    if(isAd(url)) return Promise.resolve(new Response('',{status:200,headers:{'Content-Type':'text/plain'}}));
+    return _fetch.call(this, input, opts);
   };
 
-  // ── 8. Intercept XMLHttpRequest to ad domains ──
-  var origOpen = XMLHttpRequest.prototype.open;
+  // ── 8. Intercept XHR to ad domains ──
+  var _xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url){
-    if(url && (AD_KEYWORDS.some(function(k){ return (typeof url === 'string' && url.indexOf(k) !== -1); }))){
-      return;
-    }
-    return origOpen.apply(this, arguments);
+    if(isAd(url)) return;
+    return _xhrOpen.apply(this, arguments);
   };
 
-  // ── 9. Block first click (many ads trigger on first interaction) ──
+  // ── 9. Block first-click ad triggers ──
   var firstClick = true;
   document.addEventListener('click', function(e){
     if(firstClick){
       var t = e.target;
       if(!t.closest('video,button,[class*="play"],[class*="control"],[id*="play"],[id*="control"],[class*="btn"],[class*="vjs"],[class*="jw"]')){
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        firstClick = false;
-        return;
+        e.preventDefault(); e.stopImmediatePropagation();
+        firstClick = false; return;
       }
     }
     firstClick = false;
     var a = e.target.closest('a');
     if(a && (a.target==="_blank"||a.target==="_top"||a.target==="top"||a.target==="_parent")){
-      e.preventDefault();
-      e.stopImmediatePropagation();
+      e.preventDefault(); e.stopImmediatePropagation();
     }
   }, true);
 
-  // ── 10. Block middle-click on links (opens new tabs) ──
+  // ── 10. Block middle-click on links ──
   document.addEventListener('auxclick', function(e){
-    var a = e.target.closest('a');
-    if(a){
-      e.preventDefault();
-      e.stopImmediatePropagation();
-  
+    if(e.target.closest('a')){ e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+
+  // ── 11. Fix anchor targets ──
+  function fixLinks(){
+    document.querySelectorAll('a[target]').forEach(function(a){
+      if(a.target !== "_self") a.removeAttribute("target");
+    });
+    document.querySelectorAll('[onclick*="open"]').forEach(function(el){
+      el.removeAttribute('onclick');
+    });
+  }
+  document.addEventListener('DOMContentLoaded', fixLinks);
+  setTimeout(fixLinks, 500);
+  setTimeout(fixLinks, 2000);
+
+  // ── 12. Prevent dragging links ──
+  document.addEventListener('dragstart', function(e){
+    if(e.target.closest('a')) e.preventDefault();
+  }, true);
+}());</script>`;
+
+  // Inject blocker as first thing in <head>
+  if (/<head[^>]*>/i.test(html)) {
+    html = html.replace(/<head([^>]*)>/i, '<head$1>' + blocker);
+  } else {
+    html = blocker + html;
+  }
+
+  // Add base href so relative URLs still load from original domain
+  if (!/<base/i.test(html)) {
+    html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${origin}/">`);
+  }
+
+  // Strip headers that would block iframe embedding
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('X-Frame-Options', 'ALLOWALL');
+  res.setHeader('Content-Security-Policy', '');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.send(html);
+}
+
