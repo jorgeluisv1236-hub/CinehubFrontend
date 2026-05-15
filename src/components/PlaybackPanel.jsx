@@ -6,6 +6,9 @@ import './PlaybackPanel.css';
 const IFRAME_ALLOW =
   'accelerometer *; autoplay *; clipboard-write *; encrypted-media *; gyroscope *; picture-in-picture *; web-share *; fullscreen *';
 
+// Sandbox: block popups, top nav, pointer lock, and modal dialogs
+const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-presentation';
+
 const TIMEOUT_MS = 14000;
 
 function isProbablyValidEmbedUrl(url) {
@@ -19,6 +22,12 @@ function isProbablyValidEmbedUrl(url) {
   } catch {
     return false;
   }
+}
+
+// Build proxied embed URL for clean, ad-free iframe loading
+function proxyEmbedUrl(embedUrl) {
+  if (!embedUrl) return '';
+  return `/api/embed?url=${encodeURIComponent(embedUrl.trim())}`;
 }
 
 // Try to extract direct video URL via our Puppeteer API (25s timeout)
@@ -51,7 +60,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
 
   // Native video extraction state
   const [extracting, setExtracting] = useState(false);
-  const [nativeVideo, setNativeVideo] = useState(null); // { url, type, referer }
+  const [nativeVideo, setNativeVideo] = useState(null);
   const [extractFailed, setExtractFailed] = useState(false);
 
   const frameWrapRef = useRef(null);
@@ -89,7 +98,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
 
   // Ad blocker: 3-layer fallback (only active when using iframe)
   useEffect(() => {
-    if (nativeVideo) return; // native player needs no ad blocking
+    if (nativeVideo) return;
     const origOpen = window.open;
     window.open = () => null;
 
@@ -142,6 +151,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
 
   const active = usable[activeIndex] ?? null;
   const activeUrl = active?._valid ? active.embedUrl.trim() : '';
+  const proxiedUrl = useMemo(() => proxyEmbedUrl(activeUrl), [activeUrl]);
   const hasNext = activeIndex < usable.length - 1;
 
   const onSelect = useCallback((idx) => {
@@ -198,145 +208,32 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     }
   }, [activeUrl, extracting]);
 
-  if (!usable.length) {
-    return (
-      <div className="playback-panel playback-panel--empty">
-        <AlertCircle size={40} strokeWidth={1.5} aria-hidden />
-        <p className="playback-panel__empty-title">Sin fuentes de reproducción</p>
-      </div>
-    );
-  }
+  // Auto-extract: when no native video and we have a valid URL, try extraction
+  // silently with a short timeout. If it succeeds, we get an ad-free native player.
+  // This runs once per source change.
+  useEffect(() => {
+    if (!activeUrl || nativeVideo || extracting || extractFailed) return;
+    // Small delay to let the iframe start loading first
+    const timer = setTimeout(() => {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 8000); // shorter timeout for auto
+      setExtracting(true);
+      extractVideoUrl(activeUrl, controller.signal)
+        .then((result) => {
+          if (result && !controller.signal.aborted) {
+            setNativeVideo(result);
+            setIframeLoading(false);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          clearTimeout(t);
+          setExtracting(false);
+        });
+    }, 2000);
+    return () => clearTimeout(timer);
+    // Only run on source change, not when extracting state changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUrl]);
 
-  return (
-    <div className="playback-panel">
-      <div className="playback-panel__toolbar">
-        <span className="playback-panel__toolbar-label">Servidor:</span>
-        <div className="playback-panel__sources" role="tablist" aria-label="Servidor de reproducción">
-          {usable.map((s, idx) => (
-            <button
-              key={`${s.key ?? s.name}-${idx}`}
-              type="button"
-              role="tab"
-              aria-selected={idx === activeIndex}
-              className={`playback-source-chip ${idx === activeIndex ? 'is-active' : ''} ${!s._valid ? 'is-placeholder' : ''}`}
-              onClick={() => onSelect(idx)}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
-        <span className="playback-panel__lang-hint">Si el audio no es en español, cambia de servidor</span>
-        <div className="playback-panel__toolbar-actions">
-          {/* Ad-free extraction button */}
-          {activeUrl && !nativeVideo && (
-            <button
-              type="button"
-              className={`playback-panel__action-btn ${extracting ? 'is-loading' : ''}`}
-              onClick={onExtract}
-              disabled={extracting}
-              title={extracting ? 'Extrayendo video…' : 'Reproducir sin anuncios'}
-            >
-              {extracting
-                ? <Loader2 size={15} className="playback-panel__spinner" />
-                : <Tv2 size={15} />}
-            </button>
-          )}
-          {nativeVideo && (
-            <button
-              type="button"
-              className="playback-panel__action-btn is-active-mode"
-              onClick={() => { setNativeVideo(null); setIframeLoading(true); }}
-              title="Volver al reproductor normal"
-            >
-              <Tv2 size={15} />
-            </button>
-          )}
-          {(hasNext || usable.some((s, i) => i > activeIndex && s._valid)) && (
-            <button
-              type="button"
-              className="playback-panel__action-btn"
-              onClick={onNextServer}
-              title="Siguiente servidor"
-            >
-              <SkipForward size={15} />
-            </button>
-          )}
-          <button
-            type="button"
-            className="playback-panel__action-btn"
-            onClick={onFullscreen}
-            title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
-          >
-            <Maximize2 size={15} />
-          </button>
-        </div>
-      </div>
-
-      <div className="playback-panel__frame-wrap" ref={frameWrapRef}>
-        {/* Native ad-free video player */}
-        {nativeVideo && (
-          <video
-            ref={videoRef}
-            className="playback-panel__native-video"
-            controls
-            autoPlay
-            playsInline
-          />
-        )}
-
-        {/* Extraction failed notice */}
-        {extractFailed && !nativeVideo && (
-          <div className="playback-panel__extract-hint">
-            <AlertCircle size={14} />
-            <span>No se pudo extraer — usando reproductor normal</span>
-          </div>
-        )}
-
-        {/* Iframe player (shown when no native video) */}
-        {!nativeVideo && (
-          <>
-            {iframeLoading && activeUrl && (
-              <div className="playback-panel__loading" aria-live="polite">
-                <Loader2 className="playback-panel__spinner" size={36} aria-hidden />
-                <span>Cargando reproductor…</span>
-              </div>
-            )}
-
-            {timedOut && (
-              <div className="playback-panel__timeout">
-                <AlertCircle size={32} strokeWidth={1.5} />
-                <p>Este servidor no respondió.</p>
-                {hasNext ? (
-                  <button type="button" className="playback-panel__retry-btn" onClick={onNextServer}>
-                    <SkipForward size={14} /> Probar siguiente servidor
-                  </button>
-                ) : (
-                  <p className="playback-panel__timeout-hint">No hay más servidores disponibles para este título.</p>
-                )}
-              </div>
-            )}
-
-            {!activeUrl ? (
-              <div className="playback-panel__blocked">
-                <p>La fuente <strong>{active?.name}</strong> no tiene URL válida.</p>
-              </div>
-            ) : (
-              <iframe
-                key={activeUrl}
-                className="playback-panel__iframe"
-                src={activeUrl}
-                title={`Reproductor — ${active?.name ?? 'fuente'}`}
-                allow={IFRAME_ALLOW}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                onLoad={onIframeLoad}
-              />
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default PlaybackPanel;
+  if (!usabl
