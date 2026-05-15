@@ -36,12 +36,20 @@ export default async function handler(req, res) {
 
   let browser = null;
   try {
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: { width: 1280, height: 720 },
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    });
+    const executablePath = await Promise.race([
+      chromium.executablePath(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('chromium path timeout')), 8000)),
+    ]);
+
+    browser = await Promise.race([
+      puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: { width: 1280, height: 720 },
+        executablePath,
+        headless: true,
+      }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('browser launch timeout')), 15000)),
+    ]);
 
     const page = await browser.newPage();
 

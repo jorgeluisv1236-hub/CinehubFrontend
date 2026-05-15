@@ -21,9 +21,9 @@ function isProbablyValidEmbedUrl(url) {
   }
 }
 
-// Try to extract direct video URL via our Puppeteer API
-async function extractVideoUrl(embedUrl) {
-  const res = await fetch(`/api/extract?url=${encodeURIComponent(embedUrl)}`);
+// Try to extract direct video URL via our Puppeteer API (25s timeout)
+async function extractVideoUrl(embedUrl, signal) {
+  const res = await fetch(`/api/extract?url=${encodeURIComponent(embedUrl)}`, { signal });
   if (!res.ok) return null;
   const data = await res.json();
   return data.url ? data : null;
@@ -175,13 +175,15 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     }
   }, []);
 
-  // Trigger extraction for active source
+  // Trigger extraction for active source (25s client timeout)
   const onExtract = useCallback(async () => {
     if (!activeUrl || extracting) return;
     setExtracting(true);
     setExtractFailed(false);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);
     try {
-      const result = await extractVideoUrl(activeUrl);
+      const result = await extractVideoUrl(activeUrl, controller.signal);
       if (result) {
         setNativeVideo(result);
         setIframeLoading(false);
@@ -191,6 +193,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     } catch {
       setExtractFailed(true);
     } finally {
+      clearTimeout(timer);
       setExtracting(false);
     }
   }, [activeUrl, extracting]);
