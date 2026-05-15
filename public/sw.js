@@ -1,4 +1,4 @@
-const CACHE = 'cinehub-v5';
+const CACHE = 'cinehub-v6';
 const JSON_URLS = [
   '/contents_compact.json',
   '/series_genres.json',
@@ -148,7 +148,7 @@ self.addEventListener('fetch', (e) => {
     const isAllowed = dest.origin === mine ||
       ALLOWED_NAV_HOSTS.some(h => dest.hostname === h || dest.hostname.endsWith('.' + h));
     if (!isAllowed) {
-      e.respondWith(blocked.clone());
+      e.respondWith(Response.redirect(mine + '/', 302));
       return;
     }
   }
