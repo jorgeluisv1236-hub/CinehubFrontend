@@ -236,4 +236,142 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUrl]);
 
-  if (!usabl
+  if (!usable.length) {
+    return (
+      <div className="playback-panel playback-panel--empty">
+        <AlertCircle size={40} strokeWidth={1.5} aria-hidden />
+        <p className="playback-panel__empty-title">Sin fuentes de reproducción</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="playback-panel">
+      <div className="playback-panel__toolbar">
+        <span className="playback-panel__toolbar-label">Servidor:</span>
+        <div className="playback-panel__sources" role="tablist" aria-label="Servidor de reproducción">
+          {usable.map((s, idx) => (
+            <button
+              key={`${s.key ?? s.name}-${idx}`}
+              type="button"
+              role="tab"
+              aria-selected={idx === activeIndex}
+              className={`playback-source-chip ${idx === activeIndex ? 'is-active' : ''} ${!s._valid ? 'is-placeholder' : ''}`}
+              onClick={() => onSelect(idx)}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+        <span className="playback-panel__lang-hint">Si el audio no es en español, cambia de servidor</span>
+        <div className="playback-panel__toolbar-actions">
+          {activeUrl && !nativeVideo && (
+            <button
+              type="button"
+              className={`playback-panel__action-btn ${extracting ? 'is-loading' : ''}`}
+              onClick={onExtract}
+              disabled={extracting}
+              title={extracting ? 'Extrayendo video…' : 'Reproducir sin anuncios'}
+            >
+              {extracting
+                ? <Loader2 size={15} className="playback-panel__spinner" />
+                : <Tv2 size={15} />}
+            </button>
+          )}
+          {nativeVideo && (
+            <button
+              type="button"
+              className="playback-panel__action-btn is-active-mode"
+              onClick={() => { setNativeVideo(null); setIframeLoading(true); setExtractFailed(false); }}
+              title="Volver al reproductor normal"
+            >
+              <Tv2 size={15} />
+            </button>
+          )}
+          {(hasNext || usable.some((s, i) => i > activeIndex && s._valid)) && (
+            <button
+              type="button"
+              className="playback-panel__action-btn"
+              onClick={onNextServer}
+              title="Siguiente servidor"
+            >
+              <SkipForward size={15} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="playback-panel__action-btn"
+            onClick={onFullscreen}
+            title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          >
+            <Maximize2 size={15} />
+          </button>
+        </div>
+      </div>
+
+      <div className="playback-panel__frame-wrap" ref={frameWrapRef}>
+        {nativeVideo && (
+          <video
+            ref={videoRef}
+            className="playback-panel__native-video"
+            controls
+            autoPlay
+            playsInline
+          />
+        )}
+
+        {extractFailed && !nativeVideo && (
+          <div className="playback-panel__extract-hint">
+            <AlertCircle size={14} />
+            <span>No se pudo extraer — usando reproductor normal</span>
+          </div>
+        )}
+
+        {!nativeVideo && (
+          <>
+            {iframeLoading && activeUrl && (
+              <div className="playback-panel__loading" aria-live="polite">
+                <Loader2 className="playback-panel__spinner" size={36} aria-hidden />
+                <span>Cargando reproductor…</span>
+              </div>
+            )}
+
+            {timedOut && (
+              <div className="playback-panel__timeout">
+                <AlertCircle size={32} strokeWidth={1.5} />
+                <p>Este servidor no respondió.</p>
+                {hasNext ? (
+                  <button type="button" className="playback-panel__retry-btn" onClick={onNextServer}>
+                    <SkipForward size={14} /> Probar siguiente servidor
+                  </button>
+                ) : (
+                  <p className="playback-panel__timeout-hint">No hay más servidores disponibles para este título.</p>
+                )}
+              </div>
+            )}
+
+            {!activeUrl ? (
+              <div className="playback-panel__blocked">
+                <p>La fuente <strong>{active?.name}</strong> no tiene URL válida.</p>
+              </div>
+            ) : (
+              <iframe
+                key={activeUrl}
+                className="playback-panel__iframe"
+                src={proxiedUrl || activeUrl}
+                title={`Reproductor — ${active?.name ?? 'fuente'}`}
+                allow={IFRAME_ALLOW}
+                sandbox={IFRAME_SANDBOX}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                onLoad={onIframeLoad}
+              />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default PlaybackPanel;
