@@ -6,8 +6,10 @@ import './PlaybackPanel.css';
 const IFRAME_ALLOW =
   'accelerometer *; autoplay *; clipboard-write *; encrypted-media *; gyroscope *; picture-in-picture *; web-share *; fullscreen *';
 
-// Sandbox: block popups, top nav, pointer lock, and modal dialogs
-const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-presentation';
+// Sandbox not set intentionally -- /api/embed proxy handles ad/popup/redirect
+// blocking server-side. Sandbox causes embed sites to detect restrictions
+// and refuse to play ("not available due to sandbox iframe").
+const IFRAME_SANDBOX = undefined;
 
 const TIMEOUT_MS = 14000;
 
@@ -24,13 +26,11 @@ function isProbablyValidEmbedUrl(url) {
   }
 }
 
-// Build proxied embed URL for clean, ad-free iframe loading
 function proxyEmbedUrl(embedUrl) {
   if (!embedUrl) return '';
   return `/api/embed?url=${encodeURIComponent(embedUrl.trim())}`;
 }
 
-// Try to extract direct video URL via our Puppeteer API (25s timeout)
 async function extractVideoUrl(embedUrl, signal) {
   const res = await fetch(`/api/extract?url=${encodeURIComponent(embedUrl)}`, { signal });
   if (!res.ok) return null;
@@ -57,8 +57,6 @@ const PlaybackPanel = ({ title, sources = [] }) => {
   const [iframeLoading, setIframeLoading] = useState(true);
   const [timedOut, setTimedOut] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-
-  // Native video extraction state
   const [extracting, setExtracting] = useState(false);
   const [nativeVideo, setNativeVideo] = useState(null);
   const [extractFailed, setExtractFailed] = useState(false);
@@ -66,7 +64,6 @@ const PlaybackPanel = ({ title, sources = [] }) => {
   const frameWrapRef = useRef(null);
   const videoRef = useRef(null);
   const timeoutRef = useRef(null);
-  const extractAbortRef = useRef(null);
 
   useEffect(() => {
     setActiveIndex(firstValidIdx >= 0 ? firstValidIdx : 0);
@@ -77,7 +74,6 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     setExtractFailed(false);
   }, [firstValidIdx, usable]);
 
-  // Iframe timeout
   useEffect(() => {
     clearTimeout(timeoutRef.current);
     if (iframeLoading && !nativeVideo) {
@@ -89,14 +85,12 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     return () => clearTimeout(timeoutRef.current);
   }, [iframeLoading, activeIndex, nativeVideo]);
 
-  // Fullscreen listener
   useEffect(() => {
     const onChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
-  // Ad blocker: 3-layer fallback (only active when using iframe)
   useEffect(() => {
     if (nativeVideo) return;
     const origOpen = window.open;
@@ -132,7 +126,6 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     };
   }, [nativeVideo]);
 
-  // HLS.js setup when nativeVideo changes
   useEffect(() => {
     if (!nativeVideo || !videoRef.current) return;
     const video = videoRef.current;
@@ -185,7 +178,6 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     }
   }, []);
 
-  // Trigger extraction for active source (25s client timeout)
   const onExtract = useCallback(async () => {
     if (!activeUrl || extracting) return;
     setExtracting(true);
@@ -208,15 +200,11 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     }
   }, [activeUrl, extracting]);
 
-  // Auto-extract: when no native video and we have a valid URL, try extraction
-  // silently with a short timeout. If it succeeds, we get an ad-free native player.
-  // This runs once per source change.
   useEffect(() => {
     if (!activeUrl || nativeVideo || extracting || extractFailed) return;
-    // Small delay to let the iframe start loading first
     const timer = setTimeout(() => {
       const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 8000); // shorter timeout for auto
+      const t = setTimeout(() => controller.abort(), 8000);
       setExtracting(true);
       extractVideoUrl(activeUrl, controller.signal)
         .then((result) => {
@@ -232,15 +220,13 @@ const PlaybackPanel = ({ title, sources = [] }) => {
         });
     }, 2000);
     return () => clearTimeout(timer);
-    // Only run on source change, not when extracting state changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUrl]);
 
   if (!usable.length) {
     return (
       <div className="playback-panel playback-panel--empty">
         <AlertCircle size={40} strokeWidth={1.5} aria-hidden />
-        <p className="playback-panel__empty-title">Sin fuentes de reproducción</p>
+        <p className="playback-panel__empty-title">Sin fuentes de reproduccion</p>
       </div>
     );
   }
@@ -249,7 +235,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
     <div className="playback-panel">
       <div className="playback-panel__toolbar">
         <span className="playback-panel__toolbar-label">Servidor:</span>
-        <div className="playback-panel__sources" role="tablist" aria-label="Servidor de reproducción">
+        <div className="playback-panel__sources" role="tablist" aria-label="Servidor de reproduccion">
           {usable.map((s, idx) => (
             <button
               key={`${s.key ?? s.name}-${idx}`}
@@ -263,7 +249,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
             </button>
           ))}
         </div>
-        <span className="playback-panel__lang-hint">Si el audio no es en español, cambia de servidor</span>
+        <span className="playback-panel__lang-hint">Si el audio no es en espanol, cambia de servidor</span>
         <div className="playback-panel__toolbar-actions">
           {activeUrl && !nativeVideo && (
             <button
@@ -271,7 +257,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
               className={`playback-panel__action-btn ${extracting ? 'is-loading' : ''}`}
               onClick={onExtract}
               disabled={extracting}
-              title={extracting ? 'Extrayendo video…' : 'Reproducir sin anuncios'}
+              title={extracting ? 'Extrayendo video...' : 'Reproducir sin anuncios'}
             >
               {extracting
                 ? <Loader2 size={15} className="playback-panel__spinner" />
@@ -323,7 +309,7 @@ const PlaybackPanel = ({ title, sources = [] }) => {
         {extractFailed && !nativeVideo && (
           <div className="playback-panel__extract-hint">
             <AlertCircle size={14} />
-            <span>No se pudo extraer — usando reproductor normal</span>
+            <span>No se pudo extraer - usando reproductor normal</span>
           </div>
         )}
 
@@ -332,34 +318,34 @@ const PlaybackPanel = ({ title, sources = [] }) => {
             {iframeLoading && activeUrl && (
               <div className="playback-panel__loading" aria-live="polite">
                 <Loader2 className="playback-panel__spinner" size={36} aria-hidden />
-                <span>Cargando reproductor…</span>
+                <span>Cargando reproductor...</span>
               </div>
             )}
 
             {timedOut && (
               <div className="playback-panel__timeout">
                 <AlertCircle size={32} strokeWidth={1.5} />
-                <p>Este servidor no respondió.</p>
+                <p>Este servidor no respondio.</p>
                 {hasNext ? (
                   <button type="button" className="playback-panel__retry-btn" onClick={onNextServer}>
                     <SkipForward size={14} /> Probar siguiente servidor
                   </button>
                 ) : (
-                  <p className="playback-panel__timeout-hint">No hay más servidores disponibles para este título.</p>
+                  <p className="playback-panel__timeout-hint">No hay mas servidores disponibles para este titulo.</p>
                 )}
               </div>
             )}
 
             {!activeUrl ? (
               <div className="playback-panel__blocked">
-                <p>La fuente <strong>{active?.name}</strong> no tiene URL válida.</p>
+                <p>La fuente <strong>{active?.name}</strong> no tiene URL valida.</p>
               </div>
             ) : (
               <iframe
                 key={activeUrl}
                 className="playback-panel__iframe"
                 src={proxiedUrl || activeUrl}
-                title={`Reproductor — ${active?.name ?? 'fuente'}`}
+                title={`Reproductor - ${active?.name ?? 'fuente'}`}
                 allow={IFRAME_ALLOW}
                 sandbox={IFRAME_SANDBOX}
                 loading="lazy"
@@ -375,3 +361,4 @@ const PlaybackPanel = ({ title, sources = [] }) => {
 };
 
 export default PlaybackPanel;
+
